@@ -1,0 +1,5 @@
+{
+  "name": "Jailbreak Lab",
+  "description": "A specialized AI chat platform for penetration testers featuring configurable AI personas, admin management, and secure access controls using Google Gemini.",
+  "requestFramePermissions": []
+}
