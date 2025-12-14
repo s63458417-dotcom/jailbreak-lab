@@ -13,10 +13,6 @@ export interface RestSession {
 
 // --- Helpers ---
 
-/**
- * Custom Fetch with 10-minute Timeout (600,000ms)
- * Prevents the "AbortError" on long reasoning tasks.
- */
 const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise<Response> => {
     const TIMEOUT_MS = 600000; // 10 Minutes
     
@@ -33,38 +29,25 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise
     } catch (error: any) {
         clearTimeout(id);
         if (error.name === 'AbortError') {
-            throw new Error("CONNECTION TIMEOUT: The neural link took too long to respond (10 minute limit).");
+            throw new Error("CONNECTION TIMEOUT: The neural link took too long to respond.");
         }
         throw error;
     }
 };
 
-/**
- * Fetch with Retry Logic & Exponential Backoff
- * Retries up to 3 times for Network Errors or HTTP 5xx Server Errors.
- */
 const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, backoff = 1000): Promise<Response> => {
     try {
         const response = await fetchWithTimeout(url, options);
-        
-        // Retry on Server Errors (500, 502, 503, 504)
         if (!response.ok && response.status >= 500 && retries > 0) {
-            console.warn(`Server Error ${response.status}. Retrying in ${backoff}ms...`);
             await new Promise(r => setTimeout(r, backoff));
             return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
-        
         return response;
     } catch (error: any) {
-        // Retry on Network Errors (Failed to fetch)
-        const isNetworkError = error.message.includes('Failed to fetch') || error.message.includes('Network request failed');
-        
-        if (retries > 0 && isNetworkError) {
-            console.warn(`Network instability detected. Retrying connection in ${backoff}ms...`);
+        if (retries > 0 && (error.message.includes('Failed to fetch') || error.message.includes('Network'))) {
             await new Promise(r => setTimeout(r, backoff));
             return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
-        
         throw error;
     }
 };
@@ -79,43 +62,43 @@ export const createChatSession = async (
   customApiKey?: string
 ): Promise<RestSession> => {
   
-  // 1. Resolve API Key
-  // Prioritize custom key, fallback to env (replaced by Vite/Build process)
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
   const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
   if (!apiKey) {
-    console.warn("System Warning: No API key detected. Ensure API_KEY is set in environment or settings.");
+    console.warn("System Warning: No API key detected.");
   }
 
-  // 2. Determine Endpoint Strategy
-  const isGenericEndpoint = baseUrl && (
-    baseUrl.includes('huggingface') || 
-    baseUrl.includes('deepseek') || 
-    baseUrl.includes('openai') || 
-    baseUrl.includes('v1') ||
-    !modelName.toLowerCase().includes('gemini') 
-  );
+  // Smart Provider Detection
+  // 1. Is it explicitly Google/Gemini?
+  const isGoogle = (baseUrl && baseUrl.includes('googleapis.com')) || 
+                   (!baseUrl && modelName.toLowerCase().includes('gemini'));
 
-  let finalBaseUrl = '';
-
-  if (isGenericEndpoint) {
-      finalBaseUrl = baseUrl!.replace(/\/$/, '');
-  } else {
-      // Standard Google REST Endpoint base (we append specific paths later)
-      finalBaseUrl = (baseUrl && baseUrl.trim().length > 0) 
-        ? baseUrl.replace(/\/$/, '') 
-        : 'https://generativelanguage.googleapis.com/v1beta';
+  // 2. Is it Generic (OpenAI/HF/Groq)? 
+  // If user provides a baseUrl that isn't googleapis, assume Generic/Custom
+  let isCustom = false;
+  if (baseUrl && !baseUrl.includes('googleapis.com')) {
+      isCustom = true;
+  } else if (!isGoogle && !baseUrl) {
+      // Fallback: If not google model and no url, it's weird, but default to Google SDK behavior
+      isCustom = false; 
   }
 
-  // 3. Return Session Object (No API call needed for init in REST)
+  // Clean URL slightly but preserve full paths if provided
+  let finalBaseUrl = baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+  
+  // Only strip trailing slash if it's just a root, to avoid double slashes later
+  if (finalBaseUrl.endsWith('/')) {
+      finalBaseUrl = finalBaseUrl.slice(0, -1);
+  }
+
   return {
-    isCustom: !!isGenericEndpoint,
-    modelName,
+    isCustom,
+    modelName: modelName || '',
     baseUrl: finalBaseUrl,
     apiKey: apiKey as string,
     systemInstruction,
-    history: history // Pass reference to history
+    history: history 
   };
 };
 
@@ -128,10 +111,20 @@ export const sendMessageToGemini = async (
   }
 
   try {
-    // --- STRATEGY A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek) ---
+    // --- STRATEGY A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek/Groq) ---
     if (session.isCustom) {
+      // Logic: If the model name is empty, we send a dummy one or omit it? OpenAI requires it.
+      // If the User provided a FULL URL, we use it. If not, we append /chat/completions.
+      
+      let endpoint = session.baseUrl;
+      const isFullUrl = endpoint.includes('/chat/completions') || endpoint.includes('/generate');
+      
+      if (!isFullUrl) {
+          endpoint = `${endpoint}/chat/completions`;
+      }
+
       const payload = {
-          model: session.modelName,
+          model: session.modelName || 'default', // Fallback for APIs that require field but ignore value
           messages: [
               { role: "system", content: session.systemInstruction },
               ...session.history.map(m => ({
@@ -143,8 +136,6 @@ export const sendMessageToGemini = async (
           stream: false
       };
 
-      const endpoint = `${session.baseUrl}/chat/completions`;
-      
       const response = await fetchWithRetry(endpoint, {
           method: 'POST',
           headers: {
@@ -168,10 +159,16 @@ export const sendMessageToGemini = async (
 
     // --- STRATEGY B: STANDARD GOOGLE GEMINI REST API ---
     else {
-      // 1. Construct Endpoint
-      const endpoint = `${session.baseUrl}/models/${session.modelName}:generateContent?key=${session.apiKey}`;
+      let endpoint = '';
 
-      // 2. Format History for Gemini REST (role: user/model, parts: [{text}])
+      // Check for Custom/Vertex Full URL (e.g. .../models/gemini-pro:generateContent)
+      if (session.baseUrl.includes(':generateContent')) {
+          endpoint = `${session.baseUrl}?key=${session.apiKey}`;
+      } else {
+          // Standard construction
+          endpoint = `${session.baseUrl}/models/${session.modelName}:generateContent?key=${session.apiKey}`;
+      }
+
       const contents = session.history
         .filter(m => m.role === 'user' || m.role === 'model')
         .map(m => ({
@@ -179,13 +176,11 @@ export const sendMessageToGemini = async (
             parts: [{ text: m.text }]
         }));
       
-      // 3. Add Current Message
       contents.push({
           role: 'user',
           parts: [{ text: message }]
       });
 
-      // 4. Construct Payload
       const payload: any = { contents };
 
       if (session.systemInstruction) {
@@ -194,12 +189,10 @@ export const sendMessageToGemini = async (
           };
       }
 
-      // 5. Execute Fetch with Retry
       const response = await fetchWithRetry(endpoint, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
-              // Keep-alive header helps prevent premature socket closures
               'Connection': 'keep-alive' 
           },
           body: JSON.stringify(payload)
@@ -208,7 +201,6 @@ export const sendMessageToGemini = async (
       if (!response.ok) {
          const errData = await response.json().catch(() => ({}));
          const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-         
          if (errMsg.includes('API key')) throw new Error("ACCESS_DENIED: Invalid API Key.");
          throw new Error(`Uplink Error: ${errMsg}`);
       }

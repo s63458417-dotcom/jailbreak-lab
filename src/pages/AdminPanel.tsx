@@ -103,7 +103,6 @@ const AdminPanel: React.FC = () => {
   const users = getAllUsers();
   const [inspectUserId, setInspectUserId] = useState<string | null>(null);
   
-  // Calculate Stats
   const getUserStats = (userId: string) => {
       let msgCount = 0;
       let activeChats = 0;
@@ -125,7 +124,6 @@ const AdminPanel: React.FC = () => {
       return { msgCount, activeChats, lastActive };
   };
 
-  // Memoize Analysis
   const analyzedUserLogs = useMemo(() => {
     if (!inspectUserId) return [];
     
@@ -287,14 +285,14 @@ const AdminPanel: React.FC = () => {
                              
                              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
                                 <Input 
-                                    label="Custom Icon URL (Overrides Preset)"
+                                    label="Custom Icon URL"
                                     value={formData.avatarUrl || ''} 
                                     onChange={e => setFormData({...formData, avatarUrl: e.target.value})} 
                                     placeholder="https://..."
                                     className="mb-0"
                                 />
                                 <div className="mb-0">
-                                     <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Theme Color</label>
+                                     <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Theme</label>
                                      <div className="flex gap-2">
                                         <input 
                                             type="color" 
@@ -325,32 +323,30 @@ const AdminPanel: React.FC = () => {
                         placeholder="Operational scope..."
                     />
                     <div className="w-full">
-                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">System Directives (Prompt)</label>
+                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">System Directives</label>
                         <textarea 
                             className="w-full bg-neutral-900 border border-neutral-800 focus:border-brand-600 focus:ring-1 focus:ring-brand-900/50 text-white rounded-md px-3.5 py-2.5 outline-none transition-all shadow-sm min-h-[150px] font-mono text-sm leading-relaxed"
                             value={formData.systemPrompt || ''}
                             onChange={e => setFormData({...formData, systemPrompt: e.target.value})}
                             required
-                            placeholder="You are an expert in network security. Your goal is to..."
+                            placeholder="You are an expert in network security..."
                         />
-                         <p className="text-xs text-neutral-500 mt-1">Defines AI behavior and constraints.</p>
                     </div>
                     <div className="p-5 bg-neutral-950/50 rounded-lg border border-neutral-800 grid grid-cols-1 gap-4">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-2">Technical Configuration</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input 
-                                label="Model ID" 
-                                value={formData.model || ''} 
-                                onChange={e => setFormData({...formData, model: e.target.value})} 
-                                required 
-                                placeholder="gemini-2.5-flash"
+                                label="Base URL / Full Endpoint" 
+                                value={formData.baseUrl || ''} 
+                                onChange={e => setFormData({...formData, baseUrl: e.target.value})} 
+                                placeholder="https://api.openai.com/v1"
                                 className="mb-0"
                             />
                             <Input 
-                                label="Base URL (Optional)" 
-                                value={formData.baseUrl || ''} 
-                                onChange={e => setFormData({...formData, baseUrl: e.target.value})} 
-                                placeholder="https://api.custom.endpoint/v1"
+                                label="Model ID (Optional for Full URLs)" 
+                                value={formData.model || ''} 
+                                onChange={e => setFormData({...formData, model: e.target.value})} 
+                                placeholder="gemini-2.5-flash"
                                 className="mb-0"
                             />
                         </div>
