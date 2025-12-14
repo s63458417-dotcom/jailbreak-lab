@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode, useState, useEffect } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider } from './context/StoreContext';
 import Login from './pages/Login';
@@ -17,7 +17,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -76,10 +76,17 @@ const AppContent: React.FC = () => {
     return <Login />;
   }
 
+  // Routing Logic
+  
+  // 1. Chat Route (Supports with or without sessionId)
   if (route.startsWith('#/chat/')) {
-    const parts = route.split('/chat/');
-    if (parts.length > 1) {
-        return <ChatInterface personaId={parts[1]} />;
+    const parts = route.split('/');
+    // format: # / chat / personaId / [sessionId]
+    const personaId = parts[2];
+    const sessionId = parts[3]; // optional
+    
+    if (personaId) {
+        return <ChatInterface personaId={personaId} initialSessionId={sessionId} />;
     }
   }
   

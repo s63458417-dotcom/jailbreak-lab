@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Persona, ChatMessage, ChatSession, SystemConfig } from '../types';
+import { Persona, ChatSession, ChatMessage, SystemConfig } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
 
 interface StoreContextType {
@@ -7,12 +7,18 @@ interface StoreContextType {
   addPersona: (persona: Persona) => void;
   updatePersona: (persona: Persona) => void;
   deletePersona: (id: string) => void;
-  getChatHistory: (userId: string, personaId: string) => ChatMessage[];
-  saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => void;
-  clearChatHistory: (userId: string, personaId: string) => void;
+  
+  // Session Management
+  sessions: Record<string, ChatSession>;
+  createSession: (userId: string, personaId: string) => string; // Returns new session ID
+  getSession: (sessionId: string) => ChatSession | undefined;
+  getUserSessions: (userId: string, personaId: string) => ChatSession[];
+  saveMessageToSession: (sessionId: string, message: ChatMessage) => void;
+  deleteSession: (sessionId: string) => void;
+  renameSession: (sessionId: string, newTitle: string) => void;
+
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => void;
-  allChats: Record<string, ChatSession>; 
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -34,43 +40,38 @@ const DEFAULT_CONFIG: SystemConfig = {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Personas
   const [personas, setPersonas] = useState<Persona[]>(() => {
     return safeJSONParse('pentest_personas', INITIAL_PERSONAS);
   });
 
-  const [chats, setChats] = useState<Record<string, ChatSession>>(() => {
-    return safeJSONParse('pentest_chats', {});
+  // Sessions (The new multi-chat DB)
+  const [sessions, setSessions] = useState<Record<string, ChatSession>>(() => {
+    // Migration check: If old 'pentest_chats' exists but 'pentest_sessions' doesn't, we could migrate, 
+    // but for simplicity/stability we start fresh or load existing sessions.
+    return safeJSONParse('pentest_sessions_v2', {});
   });
 
+  // Config
   const [config, setConfig] = useState<SystemConfig>(() => {
     return safeJSONParse('pentest_config', DEFAULT_CONFIG);
   });
 
+  // Persistence Effects
   useEffect(() => {
-    try {
-      localStorage.setItem('pentest_personas', JSON.stringify(personas));
-    } catch (e) {
-      console.error("Failed to save personas", e);
-    }
+    localStorage.setItem('pentest_personas', JSON.stringify(personas));
   }, [personas]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('pentest_chats', JSON.stringify(chats));
-    } catch (e) {
-      console.error("Failed to save chats", e);
-    }
-  }, [chats]);
+    localStorage.setItem('pentest_sessions_v2', JSON.stringify(sessions));
+  }, [sessions]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('pentest_config', JSON.stringify(config));
-      document.title = config.appName;
-    } catch (e) {
-      console.error("Failed to save config", e);
-    }
+    localStorage.setItem('pentest_config', JSON.stringify(config));
+    document.title = config.appName;
   }, [config]);
 
+  // --- Persona Actions ---
   const addPersona = useCallback((persona: Persona) => {
     setPersonas((prev) => [...prev, persona]);
   }, []);
@@ -83,32 +84,78 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPersonas((prev) => prev.filter(p => p.id !== id));
   }, []);
 
-  const getChatHistory = useCallback((userId: string, personaId: string) => {
-    const key = `${userId}_${personaId}`;
-    return chats[key]?.messages || [];
-  }, [chats]);
+  // --- Session Actions (The Core Upgrade) ---
 
-  const saveChatMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
-    const key = `${userId}_${personaId}`;
-    setChats((prev) => {
-      const existingSession = prev[key] || { personaId, messages: [] };
-      return {
+  const createSession = useCallback((userId: string, personaId: string) => {
+    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const timestamp = Date.now();
+    
+    // Auto-generate a title based on time (user can rename later)
+    const dateStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    const newSession: ChatSession = {
+        id: newSessionId,
+        userId,
+        personaId,
+        title: `Operation ${dateStr}`,
+        messages: [],
+        createdAt: timestamp,
+        lastModified: timestamp
+    };
+
+    setSessions(prev => ({
         ...prev,
-        [key]: {
-          ...existingSession,
-          messages: [...existingSession.messages, message],
-        },
-      };
-    });
+        [newSessionId]: newSession
+    }));
+
+    return newSessionId;
   }, []);
 
-  const clearChatHistory = useCallback((userId: string, personaId: string) => {
-    const key = `${userId}_${personaId}`;
-    setChats((prev) => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-    });
+  const getSession = useCallback((sessionId: string) => {
+      return sessions[sessionId];
+  }, [sessions]);
+
+  const getUserSessions = useCallback((userId: string, personaId: string) => {
+      // Filter sessions belonging to this user and persona, sorted by newest first
+      // Explicitly cast Object.values to ChatSession[] to fix implicit 'unknown' type error
+      return (Object.values(sessions) as ChatSession[])
+          .filter(s => s.userId === userId && s.personaId === personaId)
+          .sort((a, b) => b.lastModified - a.lastModified);
+  }, [sessions]);
+
+  const saveMessageToSession = useCallback((sessionId: string, message: ChatMessage) => {
+      setSessions(prev => {
+          const session = prev[sessionId];
+          if (!session) return prev;
+
+          return {
+              ...prev,
+              [sessionId]: {
+                  ...session,
+                  messages: [...session.messages, message],
+                  lastModified: Date.now()
+              }
+          };
+      });
+  }, []);
+
+  const deleteSession = useCallback((sessionId: string) => {
+      setSessions(prev => {
+          const newState = { ...prev };
+          delete newState[sessionId];
+          return newState;
+      });
+  }, []);
+
+  const renameSession = useCallback((sessionId: string, newTitle: string) => {
+      setSessions(prev => {
+          const session = prev[sessionId];
+          if (!session) return prev;
+          return {
+              ...prev,
+              [sessionId]: { ...session, title: newTitle }
+          };
+      });
   }, []);
 
   const updateConfig = useCallback((newConfig: SystemConfig) => {
@@ -121,12 +168,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addPersona, 
       updatePersona, 
       deletePersona,
-      getChatHistory,
-      saveChatMessage,
-      clearChatHistory,
+      sessions,
+      createSession,
+      getSession,
+      getUserSessions,
+      saveMessageToSession,
+      deleteSession,
+      renameSession,
       config,
       updateConfig,
-      allChats: chats
     }}>
       {children}
     </StoreContext.Provider>

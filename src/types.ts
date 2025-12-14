@@ -1,3 +1,4 @@
+
 export enum Role {
   ADMIN = 'ADMIN',
   USER = 'USER',
@@ -35,9 +36,15 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+// UPGRADED: Supports multiple sessions per persona
 export interface ChatSession {
-  personaId: string;
+  id: string;         // Unique Session ID (UUID)
+  personaId: string;  // Which AI is this?
+  userId: string;     // Who owns this?
+  title: string;      // "Operation Alpha", "Debug Session", etc.
   messages: ChatMessage[];
+  createdAt: number;
+  lastModified: number;
 }
 
 export interface SystemConfig {
@@ -49,6 +56,6 @@ export interface SystemConfig {
 export interface StoredData {
   users: User[]; 
   personas: Persona[];
-  chats: Record<string, ChatSession>; 
+  sessions: Record<string, ChatSession>; // Changed from 'chats' to 'sessions'
   config: SystemConfig;
 }

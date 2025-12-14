@@ -1,3 +1,4 @@
+
 import { ChatMessage } from "../types";
 
 // --- Types ---
@@ -80,7 +81,6 @@ export const createChatSession = async (
 ): Promise<RestSession> => {
   
   // 1. Resolve API Key
-  // Prioritize custom key, fallback to env (replaced by Vite/Build process)
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
   const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
@@ -102,7 +102,7 @@ export const createChatSession = async (
   if (isGenericEndpoint) {
       finalBaseUrl = baseUrl!.replace(/\/$/, '');
   } else {
-      // Standard Google REST Endpoint base (we append specific paths later)
+      // Standard Google REST Endpoint base
       finalBaseUrl = (baseUrl && baseUrl.trim().length > 0) 
         ? baseUrl.replace(/\/$/, '') 
         : 'https://generativelanguage.googleapis.com/v1beta';
@@ -115,7 +115,7 @@ export const createChatSession = async (
     baseUrl: finalBaseUrl,
     apiKey: apiKey as string,
     systemInstruction,
-    history: history // Pass reference to history
+    history: history 
   };
 };
 
