@@ -17,8 +17,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Error Boundary to catch crashes and prevent white screen
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -61,7 +60,6 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const handleHashChange = () => {
-      // Normalize route
       let hash = window.location.hash;
       if (hash.endsWith('/') && hash.length > 1) {
           hash = hash.slice(0, -1);
@@ -70,7 +68,6 @@ const AppContent: React.FC = () => {
       setRoute(hash);
     };
 
-    // Initial check
     handleHashChange();
     
     window.addEventListener('hashchange', handleHashChange);
