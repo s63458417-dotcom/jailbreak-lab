@@ -1,5 +1,6 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Persona, ChatSession, ChatMessage, SystemConfig } from '../types';
+import { Persona, ChatMessage, SystemConfig, ChatHistory } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
 
 interface StoreContextType {
@@ -8,20 +9,16 @@ interface StoreContextType {
   updatePersona: (persona: Persona) => void;
   deletePersona: (id: string) => void;
   
-  // Session Management
-  sessions: Record<string, ChatSession>;
-  createSession: (userId: string, personaId: string) => string; // Returns new session ID
-  getSession: (sessionId: string) => ChatSession | undefined;
-  getUserSessions: (userId: string, personaId: string) => ChatSession[];
-  saveMessageToSession: (sessionId: string, message: ChatMessage) => void;
-  deleteSession: (sessionId: string) => void;
-  renameSession: (sessionId: string, newTitle: string) => void;
+  // Simplified Chat Management
+  getChatMessages: (userId: string, personaId: string) => ChatMessage[];
+  saveMessage: (userId: string, personaId: string, message: ChatMessage) => void;
+  clearChat: (userId: string, personaId: string) => void;
 
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => void;
   
-  // Legacy support for admin panel stats
-  allChats: Record<string, ChatSession>;
+  // Admin / Analytics access
+  getAllChats: () => Record<string, ChatMessage[]>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -29,9 +26,18 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 const safeJSONParse = (key: string, fallback: any) => {
   try {
     const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved);
+    
+    // DATA SANITIZATION CHECK
+    // If we find the old 'sessions' format or corrupt data, we return fallback to prevent crash
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        // Basic check if it looks like the expected record
+        return parsed;
+    }
+    return fallback;
   } catch (e) {
-    console.warn(`Corrupted data in ${key}, resetting to default.`, e);
+    console.warn(`Corrupted data in ${key}, resetting.`, e);
     return fallback;
   }
 };
@@ -48,15 +54,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return safeJSONParse('pentest_personas', INITIAL_PERSONAS);
   });
 
-  // Sessions (The new multi-chat DB)
-  const [sessions, setSessions] = useState<Record<string, ChatSession>>(() => {
-    // Try to load new v2 sessions
-    const v2 = safeJSONParse('pentest_sessions_v2', null);
-    if (v2) return v2;
-
-    // Fallback: Check for legacy chat data and migrate if possible, else empty
-    // We start fresh to avoid crashes from type mismatches seen in user logs
-    return {};
+  // Chats: Key is `${userId}_${personaId}` -> Value is ChatMessage[]
+  const [chats, setChats] = useState<Record<string, ChatMessage[]>>(() => {
+    return safeJSONParse('pentest_simple_chats', {});
   });
 
   // Config
@@ -64,14 +64,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return safeJSONParse('pentest_config', DEFAULT_CONFIG);
   });
 
-  // Persistence Effects
+  // Persistence
   useEffect(() => {
     localStorage.setItem('pentest_personas', JSON.stringify(personas));
   }, [personas]);
 
   useEffect(() => {
-    localStorage.setItem('pentest_sessions_v2', JSON.stringify(sessions));
-  }, [sessions]);
+    localStorage.setItem('pentest_simple_chats', JSON.stringify(chats));
+  }, [chats]);
 
   useEffect(() => {
     localStorage.setItem('pentest_config', JSON.stringify(config));
@@ -91,79 +91,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPersonas((prev) => prev.filter(p => p.id !== id));
   }, []);
 
-  // --- Session Actions (The Core Upgrade) ---
+  // --- Simplified Chat Actions ---
 
-  const createSession = useCallback((userId: string, personaId: string) => {
-    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-    const timestamp = Date.now();
-    
-    // Auto-generate a title based on time (user can rename later)
-    const dateStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
-    const newSession: ChatSession = {
-        id: newSessionId,
-        userId,
-        personaId,
-        title: `Operation ${dateStr}`,
-        messages: [],
-        createdAt: timestamp,
-        lastModified: timestamp
-    };
+  const getChatMessages = useCallback((userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}`;
+      return chats[key] || [];
+  }, [chats]);
 
-    setSessions(prev => ({
-        ...prev,
-        [newSessionId]: newSession
-    }));
-
-    return newSessionId;
+  const saveMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
+      const key = `${userId}_${personaId}`;
+      setChats(prev => ({
+          ...prev,
+          [key]: [...(prev[key] || []), message]
+      }));
   }, []);
 
-  const getSession = useCallback((sessionId: string) => {
-      return sessions[sessionId];
-  }, [sessions]);
-
-  const getUserSessions = useCallback((userId: string, personaId: string) => {
-      // Filter sessions belonging to this user and persona, sorted by newest first
-      // Explicitly cast to array to avoid TS issues with record values
-      return (Object.values(sessions) as ChatSession[])
-          .filter(s => s.userId === userId && s.personaId === personaId)
-          .sort((a, b) => b.lastModified - a.lastModified);
-  }, [sessions]);
-
-  const saveMessageToSession = useCallback((sessionId: string, message: ChatMessage) => {
-      setSessions(prev => {
-          const session = prev[sessionId];
-          if (!session) return prev;
-
-          return {
-              ...prev,
-              [sessionId]: {
-                  ...session,
-                  messages: [...session.messages, message],
-                  lastModified: Date.now()
-              }
-          };
-      });
-  }, []);
-
-  const deleteSession = useCallback((sessionId: string) => {
-      setSessions(prev => {
+  const clearChat = useCallback((userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}`;
+      setChats(prev => {
           const newState = { ...prev };
-          delete newState[sessionId];
+          delete newState[key];
           return newState;
       });
   }, []);
 
-  const renameSession = useCallback((sessionId: string, newTitle: string) => {
-      setSessions(prev => {
-          const session = prev[sessionId];
-          if (!session) return prev;
-          return {
-              ...prev,
-              [sessionId]: { ...session, title: newTitle }
-          };
-      });
-  }, []);
+  const getAllChats = useCallback(() => chats, [chats]);
 
   const updateConfig = useCallback((newConfig: SystemConfig) => {
     setConfig(newConfig);
@@ -175,16 +127,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addPersona, 
       updatePersona, 
       deletePersona,
-      sessions,
-      createSession,
-      getSession,
-      getUserSessions,
-      saveMessageToSession,
-      deleteSession,
-      renameSession,
+      getChatMessages,
+      saveMessage,
+      clearChat,
       config,
       updateConfig,
-      allChats: sessions // Alias for admin panel compatibility
+      getAllChats
     }}>
       {children}
     </StoreContext.Provider>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -7,7 +8,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
-  const { personas, getUserSessions } = useStore();
+  const { personas, getChatMessages } = useStore();
   const { user, unlockPersona, getPersonaAccessTime, isAdmin } = useAuth();
   const [keyInput, setKeyInput] = useState<{ [id: string]: string }>({});
   const [errorMap, setErrorMap] = useState<{ [id: string]: string }>({});
@@ -63,10 +64,9 @@ const UserDashboard: React.FC = () => {
       const isLocked = persona.isLocked;
       const unlockedAt = getPersonaAccessTime(persona.id);
       
-      // Check for existing chat sessions using the new StoreContext method
-      const sessions = user ? getUserSessions(user.id, persona.id) : [];
-      const hasHistory = sessions.length > 0;
-      const lastActive = hasHistory ? sessions[0].lastModified : null;
+      const history = user ? getChatMessages(user.id, persona.id) : [];
+      const hasHistory = history.length > 0;
+      const lastActive = hasHistory ? history[history.length - 1].timestamp : null;
 
       let hasAccess = isAdmin || !!unlockedAt;
       let remainingTimeStr = '';

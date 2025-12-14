@@ -17,8 +17,11 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, error: null };
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -78,15 +81,12 @@ const AppContent: React.FC = () => {
 
   // Routing Logic
   
-  // 1. Chat Route (Supports with or without sessionId)
   if (route.startsWith('#/chat/')) {
-    const parts = route.split('/');
-    // format: # / chat / personaId / [sessionId]
-    const personaId = parts[2];
-    const sessionId = parts[3]; // optional
-    
-    if (personaId) {
-        return <ChatInterface personaId={personaId} initialSessionId={sessionId} />;
+    const parts = route.split('/chat/');
+    if (parts.length > 1) {
+        // Strip any extra params if they exist from old links
+        const personaId = parts[1].split('/')[0];
+        return <ChatInterface personaId={personaId} />;
     }
   }
   

@@ -2,12 +2,12 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { Persona, SystemConfig, ChatSession } from '../types';
+import { Persona, SystemConfig, ChatMessage } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
 
 const AdminPanel: React.FC = () => {
-  const { personas, addPersona, updatePersona, deletePersona, config, updateConfig, allChats } = useStore();
+  const { personas, addPersona, updatePersona, deletePersona, config, updateConfig, getAllChats } = useStore();
   const { getAllUsers } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'ai' | 'users' | 'branding'>('ai');
@@ -103,17 +103,20 @@ const AdminPanel: React.FC = () => {
   const users = getAllUsers();
   const [inspectUserId, setInspectUserId] = useState<string | null>(null);
   
+  // Calculate Stats
   const getUserStats = (userId: string) => {
       let msgCount = 0;
       let activeChats = 0;
       let lastActive = 0;
 
-      Object.entries(allChats).forEach(([key, session]) => {
-          const chatSession = session as ChatSession;
+      const allChats = getAllChats();
+
+      Object.entries(allChats).forEach(([key, val]) => {
+          const messages = val as ChatMessage[];
           if (key.startsWith(userId + '_')) {
               activeChats++;
-              msgCount += chatSession.messages.length;
-              const lastMsg = chatSession.messages[chatSession.messages.length - 1];
+              msgCount += messages.length;
+              const lastMsg = messages[messages.length - 1];
               if (lastMsg && lastMsg.timestamp > lastActive) {
                   lastActive = lastMsg.timestamp;
               }
@@ -122,6 +125,7 @@ const AdminPanel: React.FC = () => {
       return { msgCount, activeChats, lastActive };
   };
 
+  // Memoize Analysis
   const analyzedUserLogs = useMemo(() => {
     if (!inspectUserId) return [];
     
@@ -132,13 +136,15 @@ const AdminPanel: React.FC = () => {
         timestamp: number;
     }> = [];
 
-    Object.entries(allChats).forEach(([key, session]) => {
-        const chatSession = session as ChatSession; 
+    const allChats = getAllChats();
+
+    Object.entries(allChats).forEach(([key, val]) => {
+        const messages = val as ChatMessage[];
         if (key.startsWith(inspectUserId + '_')) {
             const personaId = key.split('_')[1];
             const personaName = personas.find(p => p.id === personaId)?.name || 'Unknown Agent';
             
-            chatSession.messages.forEach(msg => {
+            messages.forEach(msg => {
                 logs.push({
                     personaName,
                     role: msg.role,
@@ -151,7 +157,7 @@ const AdminPanel: React.FC = () => {
 
     return logs.sort((a, b) => b.timestamp - a.timestamp);
 
-  }, [inspectUserId, allChats, personas]);
+  }, [inspectUserId, getAllChats, personas]);
 
 
   return (

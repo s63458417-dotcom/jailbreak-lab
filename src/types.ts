@@ -36,14 +36,11 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-// UPGRADED: Supports multiple sessions per persona
-export interface ChatSession {
-  id: string;         // Unique Session ID (UUID)
-  personaId: string;  // Which AI is this?
-  userId: string;     // Who owns this?
-  title: string;      // "Operation Alpha", "Debug Session", etc.
+// SIMPLIFIED: One chat history per user+persona combination
+export interface ChatHistory {
+  userId: string;
+  personaId: string;
   messages: ChatMessage[];
-  createdAt: number;
   lastModified: number;
 }
 
@@ -56,6 +53,6 @@ export interface SystemConfig {
 export interface StoredData {
   users: User[]; 
   personas: Persona[];
-  sessions: Record<string, ChatSession>; // Changed from 'chats' to 'sessions'
+  chats: Record<string, ChatMessage[]>; 
   config: SystemConfig;
 }
