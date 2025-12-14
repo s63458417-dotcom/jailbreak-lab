@@ -25,13 +25,11 @@ export const createChatSession = async (
 ): Promise<ApiSession> => {
   
   // 1. Resolve API Key
-  // Vite replaces process.env.API_KEY at build time
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
   const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
   if (!apiKey) {
-    // We log a warning but don't crash yet, allowing the UI to handle the error when sending
-    console.warn("API Key warning: No valid key found.");
+    console.warn("System Warning: No API key detected in environment.");
   }
 
   // 2. Prepare History
@@ -56,8 +54,34 @@ export const createChatSession = async (
 };
 
 /**
- * Sends a message using standard fetch.
- * Handles both Google Gemini REST API and Generic OpenAI-Compatible endpoints.
+ * Custom Fetch with 3-minute Timeout
+ */
+const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    // 3 Minutes = 180,000 milliseconds
+    const TIMEOUT_MS = 180000; 
+    
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error: any) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            throw new Error("CONNECTION TIMEOUT: The neural link took too long to respond (3 minute limit).");
+        }
+        throw error;
+    }
+};
+
+/**
+ * Sends a message using the custom fetch with timeout.
+ * Handles both Google REST API and Generic OpenAI-Compatible endpoints.
  */
 export const sendMessageToGemini = async (
   session: ApiSession,
@@ -93,7 +117,7 @@ export const sendMessageToGemini = async (
 
       const endpoint = `${session.baseUrl}/chat/completions`;
       
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,17 +128,16 @@ export const sendMessageToGemini = async (
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`External API Error (${response.status}): ${errText}`);
+        throw new Error(`External Node Error (${response.status}): ${errText}`);
       }
 
       const data = await response.json();
       reply = data.choices?.[0]?.message?.content || "";
     } 
     
-    // --- STRATEGY B: GOOGLE GEMINI REST API (RAW FETCH) ---
+    // --- STRATEGY B: STANDARD SYSTEM REST API ---
     else {
       // 1. Construct the Endpoint URL (v1beta)
-      // Reference: https://ai.google.dev/api/rest/v1beta/models/generateContent
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${session.modelName}:generateContent?key=${apiKey}`;
 
       // 2. Map History to Google's REST Format
@@ -142,8 +165,8 @@ export const sendMessageToGemini = async (
         };
       }
 
-      // 5. Execute Fetch
-      const response = await fetch(endpoint, {
+      // 5. Execute Fetch with Timeout
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -154,16 +177,18 @@ export const sendMessageToGemini = async (
       if (!response.ok) {
          const errData = await response.json().catch(() => ({}));
          const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-         throw new Error(`Gemini API Error: ${errMsg}`);
+         
+         // Genericize error messages to avoid specific vendor branding in UI
+         if (errMsg.includes('API key')) throw new Error("ACCESS_DENIED: Invalid Credentials.");
+         throw new Error(`System Uplink Error: ${errMsg}`);
       }
 
       const data = await response.json();
       // Extract text from Google's response structure
-      // Response -> candidates[0] -> content -> parts[0] -> text
       reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     }
 
-    if (!reply) throw new Error("Empty response from model.");
+    if (!reply) throw new Error("Empty response from neural net.");
 
     // Update Local Session History
     session.history.push({ role: 'user', content: message });
@@ -173,6 +198,7 @@ export const sendMessageToGemini = async (
 
   } catch (error: any) {
     console.error("API Request Failed:", error);
-    throw new Error(`UPLINK FAILED: ${error.message}`);
+    // Pass the clean error message up to the UI
+    throw new Error(error.message || "Connection dropped.");
   }
 };

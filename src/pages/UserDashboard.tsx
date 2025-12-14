@@ -7,15 +7,16 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
-  const { personas } = useStore();
+  const { personas, getChatHistory } = useStore();
   const { user, unlockPersona, getPersonaAccessTime, isAdmin } = useAuth();
   const [keyInput, setKeyInput] = useState<{ [id: string]: string }>({});
   const [errorMap, setErrorMap] = useState<{ [id: string]: string }>({});
   const [activeTab, setActiveTab] = useState<'open' | 'restricted'>('open');
   
+  // Force re-render periodically to check for expiration
   const [tick, setTick] = useState(0);
   useEffect(() => {
-      const interval = setInterval(() => setTick(t => t + 1), 60000); 
+      const interval = setInterval(() => setTick(t => t + 1), 60000); // Check every minute
       return () => clearInterval(interval);
   }, []);
 
@@ -33,6 +34,7 @@ const UserDashboard: React.FC = () => {
     window.location.hash = `#/chat/${personaId}`;
   };
 
+  // Modern SVG Icons
   const getIcon = (type: string, url?: string) => {
       if (url) {
           return <img src={url} alt="Icon" className="w-6 h-6 object-cover rounded" />;
@@ -61,6 +63,11 @@ const UserDashboard: React.FC = () => {
       const isLocked = persona.isLocked;
       const unlockedAt = getPersonaAccessTime(persona.id);
       
+      // Check for existing chat history
+      const history = user ? getChatHistory(user.id, persona.id) : [];
+      const hasHistory = history.length > 0;
+      const lastActive = hasHistory ? history[history.length - 1].timestamp : null;
+
       let hasAccess = isAdmin || !!unlockedAt;
       let remainingTimeStr = '';
 
@@ -80,6 +87,7 @@ const UserDashboard: React.FC = () => {
       const needsUnlock = isLocked && !hasAccess;
       const customColor = persona.themeColor;
       
+      // Dynamic styles
       const cardStyle = customColor ? { borderColor: customColor, boxShadow: `0 4px 20px -10px ${customColor}40` } : {};
       const buttonStyle = customColor ? { backgroundColor: customColor } : {};
       const textStyle = customColor ? { color: customColor } : {};
@@ -89,6 +97,7 @@ const UserDashboard: React.FC = () => {
           className="bg-neutral-900 border border-neutral-800 rounded-lg shadow-sm hover:border-brand-900 transition-all flex flex-col overflow-hidden group relative"
           style={cardStyle}
         >
+          {/* Custom color accent line */}
           {customColor && <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: customColor }}></div>}
 
           <div className="p-6 flex-grow">
@@ -96,12 +105,20 @@ const UserDashboard: React.FC = () => {
                  <div className="p-2 bg-neutral-800 rounded border border-neutral-700 text-neutral-400">
                     {getIcon(persona.avatar, persona.avatarUrl)}
                  </div>
-                 {needsUnlock ? (
-                    <span className="bg-brand-900/30 text-brand-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-brand-900/50 uppercase">Premium</span>
-                 ) : (
-                    persona.isLocked && <span className="bg-green-900/30 text-green-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-green-900/50 uppercase">Unlocked</span>
-                 )}
-                 {!persona.isLocked && <span className="bg-blue-900/30 text-blue-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-900/50 uppercase">Free</span>}
+                 <div className="flex flex-col items-end gap-1">
+                     {needsUnlock ? (
+                        <span className="bg-brand-900/30 text-brand-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-brand-900/50 uppercase">Premium</span>
+                     ) : (
+                        persona.isLocked && <span className="bg-green-900/30 text-green-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-green-900/50 uppercase">Unlocked</span>
+                     )}
+                     {!persona.isLocked && <span className="bg-blue-900/30 text-blue-400 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-900/50 uppercase">Free</span>}
+                     
+                     {hasHistory && !needsUnlock && (
+                        <span className="text-[10px] text-neutral-500 font-mono">
+                            Last Active: {lastActive ? new Date(lastActive).toLocaleDateString() : 'Unknown'}
+                        </span>
+                     )}
+                 </div>
              </div>
              
              <h3 className="text-lg font-bold text-white mb-1 group-hover:text-brand-500 transition-colors" style={textStyle}>{persona.name}</h3>
@@ -147,11 +164,24 @@ const UserDashboard: React.FC = () => {
             ) : (
               <button 
                 onClick={() => startChat(persona.id)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 bg-neutral-800 text-neutral-200 border border-neutral-700 hover:text-white hover:brightness-110 active:scale-95 shadow-md"
-                style={buttonStyle}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 border shadow-md active:scale-95 ${
+                    hasHistory 
+                    ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-neutral-700' 
+                    : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:brightness-110'
+                }`}
+                style={buttonStyle} // Apply custom color if exists, will override class defaults
               >
-                Initiate Link 
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                {hasHistory ? (
+                    <>
+                        Resume Uplink
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    </>
+                ) : (
+                    <>
+                        Initiate Link 
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                    </>
+                )}
               </button>
             )}
           </div>
@@ -159,6 +189,7 @@ const UserDashboard: React.FC = () => {
       );
   }
 
+  // Fallback for loading state
   if (!personas) return <Layout title="Available Intelligence"><div>Loading Uplinks...</div></Layout>;
 
   const freeTier = personas.filter(p => !p.isLocked);
@@ -169,6 +200,7 @@ const UserDashboard: React.FC = () => {
   return (
     <Layout title="Dashboard">
       
+      {/* Tab Navigation */}
       <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur border-b border-neutral-800 -mx-4 lg:-mx-10 px-4 lg:px-10 pt-4 mb-8">
           <div className="flex space-x-6 overflow-x-auto hide-scrollbar">
               <button 
