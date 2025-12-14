@@ -52,7 +52,7 @@ const UserDashboard: React.FC = () => {
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
           );
           case 'chip': return (
-             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2-2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
           );
           default: return (
              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
@@ -202,35 +202,31 @@ const UserDashboard: React.FC = () => {
   return (
     <Layout title="Dashboard">
       
-      {/* Tab Navigation */}
-      <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur border-b border-neutral-800 -mx-4 lg:-mx-10 px-4 lg:px-10 pt-4 mb-8">
-          <div className="flex space-x-6 overflow-x-auto hide-scrollbar">
+      {/* Large Pill Navigation */}
+      <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800 -mx-4 lg:-mx-10 px-4 lg:px-10 py-4 mb-8">
+          <div className="flex p-1 bg-neutral-900 rounded-xl border border-neutral-800">
               <button 
                   onClick={() => setActiveTab('open')}
-                  className={`pb-4 text-sm font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold uppercase tracking-wide transition-all duration-200 ${
                       activeTab === 'open' 
-                      ? 'border-blue-500 text-blue-500' 
-                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                      ? 'bg-neutral-800 text-white shadow-sm ring-1 ring-white/10' 
+                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
                   }`}
               >
-                  <span className="flex items-center gap-2">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      Open Intelligence ({freeTier.length})
-                  </span>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  <span>Open ({freeTier.length})</span>
               </button>
               
               <button 
                   onClick={() => setActiveTab('restricted')}
-                  className={`pb-4 text-sm font-bold uppercase tracking-wider border-b-2 transition-all whitespace-nowrap ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold uppercase tracking-wide transition-all duration-200 ${
                       activeTab === 'restricted' 
-                      ? 'border-brand-500 text-brand-500' 
-                      : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                      ? 'bg-neutral-800 text-brand-500 shadow-sm ring-1 ring-brand-900/20' 
+                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
                   }`}
               >
-                  <span className="flex items-center gap-2">
-                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                      Restricted Intelligence ({paidTier.length})
-                  </span>
+                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  <span>Restricted ({paidTier.length})</span>
               </button>
           </div>
       </div>
