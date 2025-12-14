@@ -7,11 +7,12 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
-  const { personas, getChatHistory } = useStore();
+  const { personas, getChatHistory, clearChatHistory } = useStore();
   const { user, unlockPersona, getPersonaAccessTime, isAdmin } = useAuth();
   const [keyInput, setKeyInput] = useState<{ [id: string]: string }>({});
   const [errorMap, setErrorMap] = useState<{ [id: string]: string }>({});
   const [activeTab, setActiveTab] = useState<'open' | 'restricted'>('open');
+  const [newChatConfirm, setNewChatConfirm] = useState<string | null>(null);
   
   // Force re-render periodically to check for expiration
   const [tick, setTick] = useState(0);
@@ -32,6 +33,20 @@ const UserDashboard: React.FC = () => {
 
   const startChat = (personaId: string) => {
     window.location.hash = `#/chat/${personaId}`;
+  };
+
+  const handleNewSession = (e: React.MouseEvent, personaId: string) => {
+      e.stopPropagation();
+      if (!user) return;
+      
+      if (newChatConfirm === personaId) {
+          clearChatHistory(user.id, personaId);
+          startChat(personaId);
+          setNewChatConfirm(null);
+      } else {
+          setNewChatConfirm(personaId);
+          setTimeout(() => setNewChatConfirm(null), 3000);
+      }
   };
 
   // Modern SVG Icons
@@ -162,27 +177,45 @@ const UserDashboard: React.FC = () => {
                 {persona.accessDuration ? <p className="text-[10px] text-center text-neutral-500">Access expires in {persona.accessDuration} hours</p> : null}
               </div>
             ) : (
-              <button 
-                onClick={() => startChat(persona.id)}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 border shadow-md active:scale-95 ${
-                    hasHistory 
-                    ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-neutral-700' 
-                    : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:brightness-110'
-                }`}
-                style={buttonStyle} // Apply custom color if exists, will override class defaults
-              >
-                {hasHistory ? (
-                    <>
-                        Resume Uplink
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    </>
-                ) : (
-                    <>
-                        Initiate Link 
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                    </>
-                )}
-              </button>
+              <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => startChat(persona.id)}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 border shadow-md active:scale-95 ${
+                        hasHistory 
+                        ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-neutral-700' 
+                        : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:brightness-110'
+                    }`}
+                    style={buttonStyle}
+                  >
+                    {hasHistory ? (
+                        <>
+                            Resume Uplink
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        </>
+                    ) : (
+                        <>
+                            Initiate Link 
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                        </>
+                    )}
+                  </button>
+                  
+                  {hasHistory && (
+                      <button 
+                        onClick={(e) => handleNewSession(e, persona.id)}
+                        className={`w-full py-1.5 text-xs text-neutral-500 hover:text-red-400 transition-colors flex items-center justify-center gap-1 ${newChatConfirm === persona.id ? 'text-red-500 font-bold' : ''}`}
+                      >
+                         {newChatConfirm === persona.id ? (
+                            "Confirm Reset?"
+                         ) : (
+                            <>
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                Start New Session
+                            </>
+                         )}
+                      </button>
+                  )}
+              </div>
             )}
           </div>
         </div>

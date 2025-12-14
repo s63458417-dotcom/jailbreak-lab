@@ -1,204 +1,149 @@
+import { GoogleGenAI, Chat, Content } from "@google/genai";
 import { ChatMessage } from "../types";
 
-// Unified Session State Interface
-// We define our own type so we don't depend on the SDK
-export interface ApiSession {
+// Interface for Custom/OpenAI-compatible sessions
+export interface CustomSession {
+  isCustom: true;
   modelName: string;
-  baseUrl?: string;
+  baseUrl: string;
   apiKey: string;
   systemInstruction: string;
-  // Internal history format: 'user' | 'assistant' (OpenAI style) or 'user' | 'model' (Gemini style)
-  // We will normalize to 'user'/'model' during the API call generation
   history: { role: string; content: string }[];
 }
 
-/**
- * Initializes a session object. 
- * This is a lightweight state container. No network requests happen here.
- */
+export type ChatSession = Chat | CustomSession;
+
 export const createChatSession = async (
   modelName: string,
   systemInstruction: string,
   history: ChatMessage[],
   baseUrl?: string,
   customApiKey?: string
-): Promise<ApiSession> => {
+): Promise<ChatSession> => {
   
-  // 1. Resolve API Key
+  // 1. Resolve API Key for Custom Endpoints
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
-  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
+  const resolvedKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
-  if (!apiKey) {
-    console.warn("System Warning: No API key detected in environment.");
+  // 2. DETECT PROVIDER STRATEGY
+  const isGenericEndpoint = baseUrl && (
+    baseUrl.includes('huggingface') || 
+    baseUrl.includes('deepseek') || 
+    baseUrl.includes('openai') || 
+    baseUrl.includes('v1') ||
+    !modelName.toLowerCase().includes('gemini') 
+  );
+
+  if (isGenericEndpoint) {
+    if (!resolvedKey) {
+        console.warn("System Warning: No API key detected for custom endpoint.");
+    }
+    return {
+      isCustom: true,
+      modelName,
+      baseUrl: baseUrl!.replace(/\/$/, ''),
+      apiKey: resolvedKey,
+      systemInstruction,
+      history: history
+        .filter(msg => msg.role === 'user' || msg.role === 'model')
+        .map(msg => ({
+          role: msg.role === 'model' ? 'assistant' : 'user',
+          content: msg.text
+        }))
+    };
   }
 
-  // 2. Prepare History
-  // We convert the app's ChatMessage format to a simpler internal format
-  // App uses: role: 'user' | 'model'
-  // We'll store it normalized for the session
-  const formattedHistory = history
+  // 3. STANDARD GEMINI SDK INITIALIZATION
+  // Must use new GoogleGenAI({ apiKey: process.env.API_KEY }) as per guidelines.
+  // We prioritize the environment key for the official SDK.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  const formattedHistory: Content[] = history
     .filter(msg => msg.role === 'user' || msg.role === 'model')
-    .map(msg => ({
-      role: msg.role === 'model' ? 'model' : 'user',
-      content: msg.text
+    .map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.text }],
     }));
 
-  // 3. Return Session State
-  return {
-    modelName,
-    baseUrl: baseUrl ? baseUrl.replace(/\/$/, '') : undefined,
-    apiKey: apiKey as string,
-    systemInstruction,
-    history: formattedHistory
-  };
+  const chat = ai.chats.create({
+    model: modelName,
+    config: {
+      systemInstruction: systemInstruction,
+    },
+    history: formattedHistory,
+  });
+  
+  return chat;
 };
 
-/**
- * Custom Fetch with 3-minute Timeout
- */
-const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    // 3 Minutes = 180,000 milliseconds
-    const TIMEOUT_MS = 180000; 
-    
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
-    } catch (error: any) {
-        clearTimeout(id);
-        if (error.name === 'AbortError') {
-            throw new Error("CONNECTION TIMEOUT: The neural link took too long to respond (3 minute limit).");
-        }
-        throw error;
-    }
-};
-
-/**
- * Sends a message using the custom fetch with timeout.
- * Handles both Google REST API and Generic OpenAI-Compatible endpoints.
- */
 export const sendMessageToGemini = async (
-  session: ApiSession,
+  session: ChatSession,
   message: string
 ): Promise<string> => {
   if (!session) {
     throw new Error("SESSION_INVALID: Chat session is not initialized.");
   }
 
-  const isCustomEndpoint = !!session.baseUrl;
-  const apiKey = session.apiKey;
-
-  try {
-    let reply = "";
-
-    // --- STRATEGY A: CUSTOM / OPENAI COMPATIBLE ENDPOINT ---
-    if (isCustomEndpoint) {
-      // Map 'model' role to 'assistant' for OpenAI compatibility
-      const openAIMessages = [
-        { role: "system", content: session.systemInstruction },
-        ...session.history.map(h => ({
-           role: h.role === 'model' ? 'assistant' : 'user',
-           content: h.content
-        })),
-        { role: "user", content: message }
-      ];
-
-      const payload = {
-        model: session.modelName,
-        messages: openAIMessages,
-        stream: false
-      };
-
-      const endpoint = `${session.baseUrl}/chat/completions`;
+  // --- PATH A: GENERIC OPENAI-COMPATIBLE ---
+  if ('isCustom' in session) {
+      const customSession = session as CustomSession;
       
-      const response = await fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`External Node Error (${response.status}): ${errText}`);
-      }
-
-      const data = await response.json();
-      reply = data.choices?.[0]?.message?.content || "";
-    } 
-    
-    // --- STRATEGY B: STANDARD SYSTEM REST API ---
-    else {
-      // 1. Construct the Endpoint URL (v1beta)
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${session.modelName}:generateContent?key=${apiKey}`;
-
-      // 2. Map History to Google's REST Format
-      // Structure: { role: "user" | "model", parts: [{ text: "..." }] }
-      const googleContents = session.history.map(h => ({
-        role: h.role, // already 'user' or 'model'
-        parts: [{ text: h.content }]
-      }));
-
-      // 3. Add Current User Message
-      googleContents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
-
-      // 4. Construct Body
-      const payload: any = {
-        contents: googleContents,
-      };
-
-      // Add System Instruction if present
-      if (session.systemInstruction) {
-        payload.systemInstruction = {
-            parts: [{ text: session.systemInstruction }]
+      try {
+        const payload = {
+            model: customSession.modelName,
+            messages: [
+                { role: "system", content: customSession.systemInstruction },
+                ...customSession.history,
+                { role: "user", content: message }
+            ],
+            stream: false
         };
+
+        const endpoint = `${customSession.baseUrl}/chat/completions`;
+        
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${customSession.apiKey}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`External API Error (${response.status}): ${errText}`);
+        }
+
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content || "";
+
+        if (!reply) throw new Error("Empty response from external model.");
+
+        customSession.history.push({ role: 'user', content: message });
+        customSession.history.push({ role: 'assistant', content: reply });
+
+        return reply;
+
+      } catch (error: any) {
+          console.error("Custom Endpoint Error:", error);
+          throw new Error(`UPLINK FAILED: ${error.message}`);
       }
+  }
 
-      // 5. Execute Fetch with Timeout
-      const response = await fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-         const errData = await response.json().catch(() => ({}));
-         const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-         
-         // Genericize error messages to avoid specific vendor branding in UI
-         if (errMsg.includes('API key')) throw new Error("ACCESS_DENIED: Invalid Credentials.");
-         throw new Error(`System Uplink Error: ${errMsg}`);
-      }
-
-      const data = await response.json();
-      // Extract text from Google's response structure
-      reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    }
-
-    if (!reply) throw new Error("Empty response from neural net.");
-
-    // Update Local Session History
-    session.history.push({ role: 'user', content: message });
-    session.history.push({ role: 'model', content: reply });
-
-    return reply;
-
+  // --- PATH B: STANDARD GEMINI SDK ---
+  try {
+    const geminiChat = session as Chat;
+    const response = await geminiChat.sendMessage({
+      message: message,
+    });
+    
+    return response.text || "";
   } catch (error: any) {
-    console.error("API Request Failed:", error);
-    // Pass the clean error message up to the UI
-    throw new Error(error.message || "Connection dropped.");
+    console.error("Gemini API Error:", error);
+    if (error.message && error.message.includes('403')) {
+        throw new Error("ACCESS_DENIED: API Key invalid or quota exceeded.");
+    }
+    throw new Error(`UPLINK FAILED: ${error.message || "Connection dropped"}`);
   }
 };

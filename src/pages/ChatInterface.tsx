@@ -117,7 +117,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [sessionKey, setSessionKey] = useState(0); 
   
   // UI State for confirmation
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmNewChat, setConfirmNewChat] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -153,7 +153,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     if (!user || !persona) return;
 
     // Reset confirmation state when persona changes
-    setConfirmDelete(false);
+    setConfirmNewChat(false);
 
     // Load history directly
     const history = getChatHistory(user.id, personaId);
@@ -231,7 +231,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
     const textPayload = inputValue.trim();
     setInputValue(''); // Clear immediately for UX
-    setConfirmDelete(false); // Reset confirmation if user sends a message
+    setConfirmNewChat(false); // Reset confirmation if user sends a message
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -274,13 +274,13 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     }
   };
 
-  const handleClearChatAction = (e: React.MouseEvent) => {
+  const handleNewSessionAction = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     if(!user) return;
     
-    if (confirmDelete) {
+    if (confirmNewChat) {
         // Second click - Execute
         // 1. Clear Context Store
         clearChatHistory(user.id, personaId);
@@ -289,12 +289,12 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
         setChatSession(null); 
         // 3. Force Effect Re-run
         setSessionKey(prev => prev + 1); 
-        setConfirmDelete(false);
+        setConfirmNewChat(false);
     } else {
         // First click - Confirm
-        setConfirmDelete(true);
+        setConfirmNewChat(true);
         // Timeout to reset state
-        setTimeout(() => setConfirmDelete(false), 3000);
+        setTimeout(() => setConfirmNewChat(false), 3000);
     }
   }
 
@@ -342,23 +342,24 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                     </div>
                  </div>
              </div>
-             {/* Delete Chat Button (Replacing New Chat) */}
+             
+             {/* New Session Button */}
              <button 
                  type="button"
-                 onClick={handleClearChatAction} 
+                 onClick={handleNewSessionAction} 
                  className={`p-2 h-8 px-3 text-xs flex items-center gap-2 border rounded-md transition-all active:scale-95 cursor-pointer font-bold ${
-                    confirmDelete 
-                    ? 'bg-red-600 text-white border-red-500 hover:bg-red-700 shadow-md'
-                    : 'text-neutral-400 bg-neutral-900/50 border-neutral-800 hover:bg-red-900/20 hover:text-red-400 hover:border-red-900/50'
+                    confirmNewChat 
+                    ? 'bg-neutral-800 text-brand-500 border-brand-500 hover:bg-neutral-700 shadow-md'
+                    : 'text-neutral-400 bg-neutral-900/50 border-neutral-800 hover:text-white hover:border-neutral-600'
                  }`}
-                 title="Clear History"
+                 title="Reset Session"
              >
-                 {confirmDelete ? (
-                     <span>CONFIRM DELETE?</span>
+                 {confirmNewChat ? (
+                     <span>CONFIRM RESET?</span>
                  ) : (
                     <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        <span className="hidden sm:inline">Clear History</span>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        <span className="hidden sm:inline">New Session</span>
                     </>
                  )}
              </button>
