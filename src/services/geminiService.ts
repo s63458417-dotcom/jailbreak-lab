@@ -1,148 +1,145 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Chat, Content } from "@google/genai";
 import { ChatMessage } from "../types";
 
-// Unified Session State Interface
-// This replaces the SDK's internal state management
-export interface ApiSession {
+export interface CustomSession {
+  isCustom: true;
   modelName: string;
-  baseUrl?: string;
+  baseUrl: string;
   apiKey: string;
   systemInstruction: string;
-  // We store a unified history format here
   history: { role: string; content: string }[];
 }
 
-/**
- * Initializes a session object. 
- * Instead of connecting immediately, this prepares the state/config 
- * used for subsequent fetch calls.
- */
+export type UnifiedChatSession = Chat | CustomSession;
+
 export const createChatSession = async (
   modelName: string,
   systemInstruction: string,
   history: ChatMessage[],
   baseUrl?: string,
   customApiKey?: string
-): Promise<ApiSession> => {
+): Promise<UnifiedChatSession> => {
   
-  // 1. Resolve API Key
-  // Polyfilled by vite.config.ts during build
-  const envKey = process.env.API_KEY || '';
-  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
-
+  // Resolve API Key
+  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : process.env.API_KEY;
+  
   if (!apiKey) {
-    console.warn("API Key warning: No valid key found. Requests may fail.");
+      console.warn("API Key warning: No valid key found.");
   }
 
-  // 2. Prepare History
-  // Convert the app's ChatMessage format to a simpler internal format
-  const formattedHistory = history
+  // Detect Provider Strategy
+  const isGenericEndpoint = baseUrl && (
+    baseUrl.includes('huggingface') || 
+    baseUrl.includes('deepseek') || 
+    baseUrl.includes('openai') || 
+    baseUrl.includes('v1') ||
+    !modelName.toLowerCase().includes('gemini') 
+  );
+
+  if (isGenericEndpoint) {
+    return {
+      isCustom: true,
+      modelName,
+      baseUrl: baseUrl!.replace(/\/$/, ''),
+      apiKey: apiKey || '',
+      systemInstruction,
+      history: history
+        .filter(msg => msg.role === 'user' || msg.role === 'model')
+        .map(msg => ({
+          role: msg.role === 'model' ? 'assistant' : 'user',
+          content: msg.text
+        }))
+    };
+  }
+
+  // Google GenAI SDK Initialization
+  const ai = new GoogleGenAI({ apiKey: apiKey });
+
+  const formattedHistory: Content[] = history
     .filter(msg => msg.role === 'user' || msg.role === 'model')
-    .map(msg => ({
-      role: msg.role === 'model' ? 'assistant' : 'user',
-      content: msg.text
+    .map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.text }],
     }));
 
-  // 3. Return Session State
-  return {
-    modelName,
-    baseUrl: baseUrl ? baseUrl.replace(/\/$/, '') : undefined,
-    apiKey,
-    systemInstruction,
-    history: formattedHistory
-  };
+  const chat = ai.chats.create({
+    model: modelName,
+    config: {
+      systemInstruction: systemInstruction,
+    },
+    history: formattedHistory,
+  });
+
+  return chat;
 };
 
-/**
- * Sends a message using standard fetch.
- * Switches logic based on whether a custom baseUrl is provided.
- */
 export const sendMessageToGemini = async (
-  session: ApiSession,
+  session: UnifiedChatSession,
   message: string
 ): Promise<string> => {
   if (!session) {
     throw new Error("SESSION_INVALID: Chat session is not initialized.");
   }
 
-  const isCustomEndpoint = !!session.baseUrl;
+  // Custom Endpoint (OpenAI Compatible)
+  if ('isCustom' in session) {
+      const customSession = session as CustomSession;
+      try {
+        const payload = {
+            model: customSession.modelName,
+            messages: [
+                { role: "system", content: customSession.systemInstruction },
+                ...customSession.history,
+                { role: "user", content: message }
+            ],
+            stream: false
+        };
 
-  try {
-    let reply = "";
+        const endpoint = `${customSession.baseUrl}/chat/completions`;
+        
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${customSession.apiKey}`
+            },
+            body: JSON.stringify(payload)
+        });
 
-    // --- STRATEGY A: CUSTOM / OPENAI COMPATIBLE ENDPOINT ---
-    if (isCustomEndpoint) {
-      const payload = {
-        model: session.modelName,
-        messages: [
-          { role: "system", content: session.systemInstruction },
-          ...session.history,
-          { role: "user", content: message }
-        ],
-        stream: false
-      };
-
-      // Assume standard /v1/chat/completions structure for custom endpoints
-      const endpoint = `${session.baseUrl}/chat/completions`;
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.apiKey}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Custom API Error (${response.status}): ${errText}`);
-      }
-
-      const data = await response.json();
-      reply = data.choices?.[0]?.message?.content || "";
-    } 
-    
-    // --- STRATEGY B: GOOGLE GEMINI SDK ---
-    else {
-      // Initialize SDK
-      const ai = new GoogleGenAI({ apiKey: session.apiKey });
-      
-      // Prepare contents from history
-      // Map "assistant" (from our internal history) -> "model" (for Gemini API)
-      const historyContents = session.history.map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.content }]
-      }));
-      
-      // Add current message
-      historyContents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
-
-      // Use generateContent for stateless request with history
-      const response = await ai.models.generateContent({
-        model: session.modelName,
-        contents: historyContents,
-        config: {
-          systemInstruction: session.systemInstruction,
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`External API Error (${response.status}): ${errText}`);
         }
-      });
-      
-      reply = response.text || "";
-    }
 
-    if (!reply) throw new Error("Empty response from model.");
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content || "";
 
-    // Update Local Session History
-    session.history.push({ role: 'user', content: message });
-    session.history.push({ role: 'assistant', content: reply });
+        if (!reply) throw new Error("Empty response from external model.");
 
-    return reply;
+        customSession.history.push({ role: 'user', content: message });
+        customSession.history.push({ role: 'assistant', content: reply });
 
+        return reply;
+
+      } catch (error: any) {
+          console.error("Custom Endpoint Error:", error);
+          throw new Error(`UPLINK FAILED: ${error.message}`);
+      }
+  }
+
+  // Google GenAI SDK
+  try {
+    const chat = session as Chat;
+    const response = await chat.sendMessage({
+      message: message,
+    });
+    
+    return response.text || "";
   } catch (error: any) {
-    console.error("API Request Failed:", error);
-    throw new Error(`UPLINK FAILED: ${error.message}`);
+    console.error("Gemini API Error:", error);
+    if (error.toString().includes('403')) {
+        throw new Error("ACCESS_DENIED: API Key invalid or quota exceeded.");
+    }
+    throw new Error(`UPLINK FAILED: ${error.message || "Connection dropped"}`);
   }
 };
