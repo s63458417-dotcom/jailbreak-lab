@@ -20,17 +20,16 @@ export const createChatSession = async (
 ): Promise<Chat | CustomSession> => {
   
   // 1. Resolve API Key
-  // Fix: Use process.env.API_KEY directly as per guidelines and to avoid ImportMeta error
+  // Note: process.env.API_KEY is replaced by string value during Vite build via vite.config.ts
   const envKey = process.env.API_KEY || '';
   const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
   if (!apiKey) {
-    throw new Error("MISSING_API_KEY: No valid API key found. Please configure process.env.API_KEY.");
+    console.warn("API Key warning: No valid key found in environment or settings.");
+    // We don't throw immediately here to allow UI to render, but the chat will fail if they try to send.
   }
 
   // 2. DETECT PROVIDER STRATEGY
-  // If the baseUrl is provided and it looks like a 3rd party (HuggingFace, DeepSeek, etc)
-  // or if the model name is clearly not a Google model, we switch to Generic OpenAI-Compat mode.
   const isGenericEndpoint = baseUrl && (
     baseUrl.includes('huggingface') || 
     baseUrl.includes('deepseek') || 
@@ -108,7 +107,6 @@ export const sendMessageToGemini = async (
             stream: false
         };
 
-        // Assume /chat/completions standard for generic v1 endpoints
         const endpoint = `${session.baseUrl}/chat/completions`;
         
         const response = await fetch(endpoint, {
