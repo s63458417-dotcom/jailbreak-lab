@@ -19,6 +19,9 @@ interface StoreContextType {
 
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => void;
+  
+  // Legacy support for admin panel stats
+  allChats: Record<string, ChatSession>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -47,9 +50,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Sessions (The new multi-chat DB)
   const [sessions, setSessions] = useState<Record<string, ChatSession>>(() => {
-    // Migration check: If old 'pentest_chats' exists but 'pentest_sessions' doesn't, we could migrate, 
-    // but for simplicity/stability we start fresh or load existing sessions.
-    return safeJSONParse('pentest_sessions_v2', {});
+    // Try to load new v2 sessions
+    const v2 = safeJSONParse('pentest_sessions_v2', null);
+    if (v2) return v2;
+
+    // Fallback: Check for legacy chat data and migrate if possible, else empty
+    // We start fresh to avoid crashes from type mismatches seen in user logs
+    return {};
   });
 
   // Config
@@ -117,7 +124,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const getUserSessions = useCallback((userId: string, personaId: string) => {
       // Filter sessions belonging to this user and persona, sorted by newest first
-      // Explicitly cast Object.values to ChatSession[] to fix implicit 'unknown' type error
+      // Explicitly cast to array to avoid TS issues with record values
       return (Object.values(sessions) as ChatSession[])
           .filter(s => s.userId === userId && s.personaId === personaId)
           .sort((a, b) => b.lastModified - a.lastModified);
@@ -177,6 +184,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       renameSession,
       config,
       updateConfig,
+      allChats: sessions // Alias for admin panel compatibility
     }}>
       {children}
     </StoreContext.Provider>

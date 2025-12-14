@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -128,7 +127,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId, initialSession
       if (session) {
           setMessages(session.messages);
       }
-  }, [activeSessionId, getSession]);
+  }, [activeSessionId, getSession, isSending]); // Added isSending to ensure refresh on local updates
 
   // 3. Security Check
   useEffect(() => {

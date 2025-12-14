@@ -7,12 +7,11 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
-  const { personas, getChatHistory, clearChatHistory } = useStore();
+  const { personas, getUserSessions } = useStore();
   const { user, unlockPersona, getPersonaAccessTime, isAdmin } = useAuth();
   const [keyInput, setKeyInput] = useState<{ [id: string]: string }>({});
   const [errorMap, setErrorMap] = useState<{ [id: string]: string }>({});
   const [activeTab, setActiveTab] = useState<'open' | 'restricted'>('open');
-  const [newChatConfirm, setNewChatConfirm] = useState<string | null>(null);
   
   // Force re-render periodically to check for expiration
   const [tick, setTick] = useState(0);
@@ -33,20 +32,6 @@ const UserDashboard: React.FC = () => {
 
   const startChat = (personaId: string) => {
     window.location.hash = `#/chat/${personaId}`;
-  };
-
-  const handleNewSession = (e: React.MouseEvent, personaId: string) => {
-      e.stopPropagation();
-      if (!user) return;
-      
-      if (newChatConfirm === personaId) {
-          clearChatHistory(user.id, personaId);
-          startChat(personaId);
-          setNewChatConfirm(null);
-      } else {
-          setNewChatConfirm(personaId);
-          setTimeout(() => setNewChatConfirm(null), 3000);
-      }
   };
 
   // Modern SVG Icons
@@ -78,10 +63,10 @@ const UserDashboard: React.FC = () => {
       const isLocked = persona.isLocked;
       const unlockedAt = getPersonaAccessTime(persona.id);
       
-      // Check for existing chat history
-      const history = user ? getChatHistory(user.id, persona.id) : [];
-      const hasHistory = history.length > 0;
-      const lastActive = hasHistory ? history[history.length - 1].timestamp : null;
+      // Check for existing chat sessions using the new StoreContext method
+      const sessions = user ? getUserSessions(user.id, persona.id) : [];
+      const hasHistory = sessions.length > 0;
+      const lastActive = hasHistory ? sessions[0].lastModified : null;
 
       let hasAccess = isAdmin || !!unlockedAt;
       let remainingTimeStr = '';
@@ -199,22 +184,6 @@ const UserDashboard: React.FC = () => {
                         </>
                     )}
                   </button>
-                  
-                  {hasHistory && (
-                      <button 
-                        onClick={(e) => handleNewSession(e, persona.id)}
-                        className={`w-full py-1.5 text-xs text-neutral-500 hover:text-red-400 transition-colors flex items-center justify-center gap-1 ${newChatConfirm === persona.id ? 'text-red-500 font-bold' : ''}`}
-                      >
-                         {newChatConfirm === persona.id ? (
-                            "Confirm Reset?"
-                         ) : (
-                            <>
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                Start New Session
-                            </>
-                         )}
-                      </button>
-                  )}
               </div>
             )}
           </div>
