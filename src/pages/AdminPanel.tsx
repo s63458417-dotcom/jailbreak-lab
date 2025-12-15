@@ -1,17 +1,23 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { Persona, SystemConfig, ChatMessage } from '../types';
+import { Persona, SystemConfig, ChatMessage, KeyPool } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
 
 const AdminPanel: React.FC = () => {
-  const { personas, addPersona, updatePersona, deletePersona, config, updateConfig, getAllChats } = useStore();
+  const { 
+      personas, addPersona, updatePersona, deletePersona, 
+      config, updateConfig, getAllChats,
+      keyPools, addKeyPool, updateKeyPool, deleteKeyPool
+  } = useStore();
   const { getAllUsers } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<'ai' | 'users' | 'branding'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding'>('ai');
 
+  // --- AI Config Logic ---
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isAvatarOpen, setIsAvatarOpen] = useState(false);
@@ -37,6 +43,7 @@ const AdminPanel: React.FC = () => {
     model: 'gemini-2.5-flash',
     baseUrl: '',
     customApiKey: '',
+    keyPoolId: '',
     avatar: 'shield',
     avatarUrl: '',
     themeColor: '',
@@ -44,6 +51,17 @@ const AdminPanel: React.FC = () => {
   };
 
   const [formData, setFormData] = useState<Partial<Persona>>(defaultForm);
+
+  // --- Vault Logic ---
+  const defaultPoolForm: Partial<KeyPool> = {
+      name: '',
+      provider: 'custom',
+      keys: [],
+      deadKeys: {}
+  };
+  const [poolForm, setPoolForm] = useState<Partial<KeyPool>>(defaultPoolForm);
+  const [poolKeysText, setPoolKeysText] = useState('');
+  const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
 
   const resetForm = () => {
     setFormData(defaultForm);
@@ -77,19 +95,61 @@ const AdminPanel: React.FC = () => {
         alert("Name and System Prompt are required.");
         return;
     }
+    const payload = { ...formData };
+    // Clean up empty strings
+    if (payload.keyPoolId === '') delete payload.keyPoolId;
+    if (payload.customApiKey === '') delete payload.customApiKey;
+
     if (editingId) {
-        updatePersona({ ...formData, id: editingId } as Persona);
+        updatePersona({ ...payload, id: editingId } as Persona);
     } else {
-        addPersona({ ...formData as Persona, id: Date.now().toString() });
+        addPersona({ ...payload as Persona, id: Date.now().toString() });
     }
     resetForm();
   };
+
+  // --- Vault Handlers ---
+  const handleEditPool = (pool: KeyPool) => {
+      setEditingPoolId(pool.id);
+      setPoolForm(pool);
+      setPoolKeysText(pool.keys.join('\n'));
+  };
+
+  const handlePoolSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!poolForm.name) return alert("Pool name required");
+      
+      const keys = poolKeysText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+      if (keys.length === 0) return alert("At least one key is required");
+
+      const newPool: KeyPool = {
+          id: editingPoolId || Date.now().toString(),
+          name: poolForm.name!,
+          provider: poolForm.provider || 'custom',
+          keys: keys,
+          deadKeys: poolForm.deadKeys || {}
+      };
+
+      if (editingPoolId) {
+          updateKeyPool(newPool);
+      } else {
+          addKeyPool(newPool);
+      }
+      setEditingPoolId(null);
+      setPoolForm(defaultPoolForm);
+      setPoolKeysText('');
+  };
+
+  const handleReviveKeys = (pool: KeyPool) => {
+      updateKeyPool({ ...pool, deadKeys: {} });
+  };
+
 
   const AVATAR_OPTIONS = [
     { id: 'shield', label: 'Defense', desc: 'Blue Team / Protection', color: 'text-brand-500', bgColor: 'bg-brand-900/20', borderColor: 'border-brand-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
     { id: 'target', label: 'Offense', desc: 'Red Team / Attack', color: 'text-red-500', bgColor: 'bg-red-900/20', borderColor: 'border-red-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg> },
     { id: 'code', label: 'Development', desc: 'DevSecOps / Scripts', color: 'text-blue-500', bgColor: 'bg-blue-900/20', borderColor: 'border-blue-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> },
-    { id: 'chip', label: 'System', desc: 'Architecture / Hardware', color: 'text-purple-500', bgColor: 'bg-purple-900/20', borderColor: 'border-purple-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg> },
+    { id: 'chip', label: 'System', desc: 'Architecture / Hardware', color: 'text-purple-500', bgColor: 'bg-purple-900/20', borderColor: 'border-purple-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2-2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg> },
   ];
   const selectedAvatar = AVATAR_OPTIONS.find(a => a.id === formData.avatar) || AVATAR_OPTIONS[0];
 
@@ -164,6 +224,7 @@ const AdminPanel: React.FC = () => {
              <h2 className="text-2xl font-bold text-white tracking-tight">Admin Console</h2>
              <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
                  <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'ai' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Intelligence</button>
+                 <button onClick={() => setActiveTab('vault')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'vault' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Key Vaults</button>
                  <button onClick={() => setActiveTab('users')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'users' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Operatives</button>
                  <button onClick={() => setActiveTab('branding')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'branding' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Identity</button>
              </div>
@@ -343,23 +404,75 @@ const AdminPanel: React.FC = () => {
                                 className="mb-0"
                             />
                             <Input 
-                                label="Model ID (Optional for Full URLs)" 
+                                label="Model ID" 
                                 value={formData.model || ''} 
                                 onChange={e => setFormData({...formData, model: e.target.value})} 
                                 placeholder="gemini-2.5-flash"
                                 className="mb-0"
                             />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input 
-                                label="Custom API Key (Optional)" 
-                                type="password" 
-                                value={formData.customApiKey || ''} 
-                                onChange={e => setFormData({...formData, customApiKey: e.target.value})} 
-                                placeholder="Overwrite global key for this agent"
-                                className="mb-0"
-                            />
-                            <Input 
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                             <div className="space-y-4">
+                                <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider">Authentication Method</label>
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <input 
+                                            type="radio" 
+                                            name="authMethod" 
+                                            checked={!formData.keyPoolId} 
+                                            onChange={() => setFormData({...formData, keyPoolId: ''})} 
+                                            className="bg-neutral-900 border-neutral-700 text-brand-600 focus:ring-brand-900"
+                                        />
+                                        <span className="text-sm text-neutral-300">Single API Key</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input 
+                                            type="radio" 
+                                            name="authMethod" 
+                                            checked={!!formData.keyPoolId} 
+                                            onChange={() => {
+                                                const firstPool = keyPools.length > 0 ? keyPools[0].id : '';
+                                                setFormData({...formData, keyPoolId: firstPool})
+                                            }} 
+                                            className="bg-neutral-900 border-neutral-700 text-brand-600 focus:ring-brand-900"
+                                        />
+                                        <span className="text-sm text-neutral-300">Key Vault (Auto-Failover)</span>
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div>
+                                 {!formData.keyPoolId ? (
+                                    <Input 
+                                        label="Single API Key" 
+                                        type="password" 
+                                        value={formData.customApiKey || ''} 
+                                        onChange={e => setFormData({...formData, customApiKey: e.target.value})} 
+                                        placeholder="Legacy method..."
+                                        className="mb-0"
+                                    />
+                                 ) : (
+                                    <div className="w-full mb-4">
+                                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Select Key Vault</label>
+                                        <select
+                                            className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-md px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-brand-900/20 focus:border-brand-600 shadow-sm"
+                                            value={formData.keyPoolId}
+                                            onChange={e => setFormData({...formData, keyPoolId: e.target.value})}
+                                        >
+                                            {keyPools.length === 0 && <option value="">No Vaults Created</option>}
+                                            {keyPools.map(pool => (
+                                                <option key={pool.id} value={pool.id}>{pool.name} ({pool.keys.length - Object.keys(pool.deadKeys).length}/{pool.keys.length} Active)</option>
+                                            ))}
+                                        </select>
+                                        {keyPools.length === 0 && <p className="text-xs text-red-500 mt-1">Create a Key Vault in the tabs above first.</p>}
+                                    </div>
+                                 )}
+                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-neutral-800 pt-4 mt-2">
+                             <Input 
                                 label="Rate Limit (Msgs/Day)" 
                                 type="number" 
                                 value={formData.rateLimit || ''} 
@@ -415,6 +528,121 @@ const AdminPanel: React.FC = () => {
             </div>
         </div>
       </div>
+      )}
+
+      {/* KEY VAULT TAB */}
+      {activeTab === 'vault' && (
+         <div className="flex flex-col xl:flex-row gap-8 pb-20 animate-in fade-in">
+             <div className="xl:w-1/3 order-2 xl:order-1">
+                 <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 overflow-hidden">
+                     <div className="p-4 border-b border-neutral-800 bg-neutral-950/50 flex justify-between items-center">
+                         <h3 className="font-semibold text-neutral-300">Available Vaults</h3>
+                         <span className="text-xs bg-neutral-800 text-neutral-500 px-2 py-1 rounded-full">{keyPools.length} Pools</span>
+                     </div>
+                     <div className="divide-y divide-neutral-800 max-h-[600px] overflow-y-auto custom-scrollbar">
+                         {keyPools.map(pool => {
+                             const deadCount = Object.keys(pool.deadKeys).length;
+                             const totalCount = pool.keys.length;
+                             const health = totalCount > 0 ? ((totalCount - deadCount) / totalCount) * 100 : 0;
+                             
+                             return (
+                                 <div key={pool.id} className="p-4 flex flex-col gap-3 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => handleEditPool(pool)}>
+                                     <div className="flex justify-between items-start">
+                                         <div>
+                                             <div className="font-bold text-white flex items-center gap-2">
+                                                 {pool.name}
+                                                 {deadCount > 0 && <span className="text-[10px] bg-red-900/30 text-red-500 px-1.5 rounded font-mono border border-red-900/50">{deadCount} DEAD</span>}
+                                             </div>
+                                             <div className="text-xs text-neutral-500 mt-1 capitalize">{pool.provider} Provider</div>
+                                         </div>
+                                         <button onClick={(e) => { e.stopPropagation(); deleteKeyPool(pool.id); }} className="text-neutral-600 hover:text-red-500">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                         </button>
+                                     </div>
+                                     
+                                     {/* Health Bar */}
+                                     <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                                         <div 
+                                            className={`h-full ${health > 50 ? 'bg-green-500' : health > 20 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                                            style={{ width: `${health}%` }}
+                                         ></div>
+                                     </div>
+                                     <div className="text-[10px] text-neutral-500 font-mono text-right">
+                                         {totalCount - deadCount} / {totalCount} Keys Operational
+                                     </div>
+                                 </div>
+                             );
+                         })}
+                         {keyPools.length === 0 && <div className="p-8 text-center text-sm text-neutral-600">No vaults created.</div>}
+                     </div>
+                 </div>
+             </div>
+
+             <div className="xl:w-2/3 order-1 xl:order-2">
+                 <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6">
+                     <h3 className="text-lg font-semibold text-white mb-6 border-b border-neutral-800 pb-4">
+                         {editingPoolId ? `Editing: ${poolForm.name}` : 'Create New Key Vault'}
+                     </h3>
+                     
+                     <form onSubmit={handlePoolSubmit} className="space-y-6">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <Input 
+                                label="Vault Name"
+                                value={poolForm.name || ''}
+                                onChange={e => setPoolForm({...poolForm, name: e.target.value})}
+                                placeholder="e.g. HuggingFace Allocation A"
+                                required
+                             />
+                             <div>
+                                 <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Provider Type</label>
+                                 <select 
+                                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-md px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-brand-900/20 focus:border-brand-600 shadow-sm"
+                                    value={poolForm.provider}
+                                    onChange={e => setPoolForm({...poolForm, provider: e.target.value as any})}
+                                 >
+                                     <option value="custom">Custom / Generic</option>
+                                     <option value="google">Google Gemini</option>
+                                     <option value="openai">OpenAI Compatible</option>
+                                 </select>
+                             </div>
+                         </div>
+
+                         <div>
+                             <div className="flex justify-between items-center mb-2">
+                                 <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider">API Keys (One per line)</label>
+                                 {Object.keys(poolForm.deadKeys || {}).length > 0 && (
+                                     <button 
+                                        type="button" 
+                                        onClick={() => handleReviveKeys(poolForm as KeyPool)}
+                                        className="text-[10px] text-green-400 hover:text-green-300 font-bold uppercase"
+                                     >
+                                         Revive Dead Keys
+                                     </button>
+                                 )}
+                             </div>
+                             <textarea 
+                                className="w-full bg-neutral-950 border border-neutral-800 font-mono text-xs text-brand-100 p-4 rounded-md h-64 focus:border-brand-600 outline-none resize-y"
+                                placeholder="sk-..."
+                                value={poolKeysText}
+                                onChange={e => setPoolKeysText(e.target.value)}
+                             />
+                             <p className="text-xs text-neutral-500 mt-2">
+                                 The system will automatically rotate through these keys. If a key hits a rate limit or expires, it will be marked as "Dead" and the system will instantly failover to the next key.
+                             </p>
+                         </div>
+
+                         <div className="pt-4 border-t border-neutral-800 flex gap-4">
+                             <Button type="submit">Save Vault</Button>
+                             {editingPoolId && (
+                                 <Button type="button" variant="ghost" onClick={() => { setEditingPoolId(null); setPoolForm({ name: '', provider: 'custom', keys: [], deadKeys: {} }); setPoolKeysText(''); }}>
+                                     Cancel
+                                 </Button>
+                             )}
+                         </div>
+                     </form>
+                 </div>
+             </div>
+         </div>
       )}
 
       {activeTab === 'users' && !inspectUserId && (

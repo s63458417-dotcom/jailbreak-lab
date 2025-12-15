@@ -12,6 +12,15 @@ export interface User {
   unlockedPersonas: Record<string, number>; 
 }
 
+// New Interface for Token Boxes
+export interface KeyPool {
+  id: string;
+  name: string;
+  provider: 'google' | 'openai' | 'custom'; // For UI sorting
+  keys: string[]; // List of all keys
+  deadKeys: Record<string, number>; // Map of Key -> Timestamp when it failed
+}
+
 export interface Persona {
   id: string;
   name: string;
@@ -22,7 +31,8 @@ export interface Persona {
   accessDuration?: number; 
   model: string;
   baseUrl?: string; 
-  customApiKey?: string; 
+  customApiKey?: string; // Legacy/Single override
+  keyPoolId?: string; // Link to a Key Vault
   avatar: string; 
   avatarUrl?: string; 
   themeColor?: string; 
@@ -36,23 +46,8 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-// SIMPLIFIED: One chat history per user+persona combination
-export interface ChatHistory {
-  userId: string;
-  personaId: string;
-  messages: ChatMessage[];
-  lastModified: number;
-}
-
 export interface SystemConfig {
   appName: string;
   creatorName: string;
   logoUrl: string;
-}
-
-export interface StoredData {
-  users: User[]; 
-  personas: Persona[];
-  chats: Record<string, ChatMessage[]>; 
-  config: SystemConfig;
 }

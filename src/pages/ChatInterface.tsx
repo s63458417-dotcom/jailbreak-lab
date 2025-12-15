@@ -7,20 +7,15 @@ import { ChatMessage } from '../types';
 import { createChatSession, sendMessageToGemini } from '../services/geminiService';
 import { marked } from 'marked';
 
-// --- Types ---
 interface ChatInterfaceProps {
     personaId: string;
 }
-
-// --- Components ---
 
 const MessageContent: React.FC<{ content: string }> = ({ content }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const htmlContent = useMemo(() => {
-    // CRITICAL FIX: Ensure content is a string and not empty to prevent 'replace' error
     if (!content || typeof content !== 'string') return '';
-
     try {
         const renderer = new marked.Renderer();
         renderer.code = ({ text, lang }) => {
@@ -43,7 +38,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
         return marked.parse(content, { renderer });
     } catch (e) {
         console.error("Markdown parsing failed", e);
-        return content; // Fallback to raw text
+        return content; 
     }
   }, [content]);
 
@@ -70,7 +65,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
-  const { personas, getChatMessages, saveMessage, clearChat } = useStore();
+  const { personas, getChatMessages, saveMessage, clearChat, getValidKey, reportKeyFailure } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   const persona = personas.find(p => p.id === personaId);
   
@@ -109,7 +104,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isSending]);
 
-  // --- Actions ---
+  // --- Helpers ---
+  
+  // Logic to determine which key to use:
+  // 1. Key Pool if assigned (Preferred)
+  // 2. Custom API Key if assigned
+  // 3. Environment Variable (handled in service)
+  const getActiveKey = () => {
+      if (persona?.keyPoolId) {
+          const key = getValidKey(persona.keyPoolId);
+          return { key, source: 'pool' };
+      }
+      return { key: persona?.customApiKey || undefined, source: 'legacy' };
+  };
 
   const handleClearChat = () => {
       if (confirmClear) {
@@ -121,6 +128,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
       } else {
           setConfirmClear(true);
           setTimeout(() => setConfirmClear(false), 3000);
+      }
+  };
+
+  const executeSend = async (text: string, attempt = 0): Promise<string> => {
+      if (!persona) throw new Error("Persona lost");
+
+      const { key, source } = getActiveKey();
+
+      // If we are using a pool but no key returned, it means the pool is empty/dead
+      if (source === 'pool' && !key) {
+          throw new Error("KEY VAULT DEPLETED: All tokens in this box are dead or rate-limited. Please add fresh tokens in Admin Console.");
+      }
+
+      try {
+          const apiSession = await createChatSession(
+              persona.model,
+              persona.systemPrompt,
+              messages,
+              persona.baseUrl,
+              key 
+          );
+
+          return await sendMessageToGemini(apiSession, text);
+
+      } catch (error: any) {
+          const errMsg = error.message || '';
+          const isAuthError = errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('ACCESS_DENIED');
+          const isQuotaError = errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('Too Many Requests');
+
+          // FAILOVER LOGIC
+          if ((isAuthError || isQuotaError) && source === 'pool' && persona.keyPoolId && attempt < 5) {
+              // 1. Mark this specific key as dead
+              if (key) reportKeyFailure(persona.keyPoolId, key);
+              
+              console.warn(`Token died (${key?.substring(0,6)}...), rotating...`);
+              
+              // 2. Recurse (Try again) - getActiveKey() will now fetch the NEXT available key
+              return await executeSend(text, attempt + 1);
+          }
+
+          // If not a pool error, or retries exhausted, throw up
+          throw error;
       }
   };
 
@@ -145,17 +194,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     setIsSending(true);
 
     try {
-      // 2. Prepare Connection
-      const apiSession = await createChatSession(
-          persona.model,
-          persona.systemPrompt,
-          messages, // Send current history
-          persona.baseUrl,
-          persona.customApiKey
-      );
-
-      // 3. Send
-      const responseText = await sendMessageToGemini(apiSession, textPayload);
+      const responseText = await executeSend(textPayload);
       
       const modelMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -209,7 +248,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                             </span>
-                            SECURE UPLINK ESTABLISHED
+                            {persona.keyPoolId ? 'VAULT LINK ACTIVE' : 'SECURE UPLINK ACTIVE'}
                         </div>
                     </div>
                 </div>
