@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';

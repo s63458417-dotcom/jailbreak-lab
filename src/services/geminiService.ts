@@ -1,15 +1,13 @@
-
-import { GoogleGenAI, Content, Chat } from "@google/genai";
 import { ChatMessage } from "../types";
 
-// Interface for OpenAI-compatible sessions (HuggingFace, DeepSeek, etc.)
-export interface CustomSession {
-  isCustom: true;
+// Unified Session Interface (No SDK types)
+export interface AISession {
   modelName: string;
   baseUrl: string;
   apiKey: string;
   systemInstruction: string;
-  history: { role: string; content: string }[];
+  history: ChatMessage[]; // We keep the full message history objects
+  isGeneric: boolean; // true = OpenAI/DeepSeek format, false = Google format
 }
 
 export const createChatSession = async (
@@ -18,7 +16,7 @@ export const createChatSession = async (
   history: ChatMessage[],
   baseUrl?: string,
   customApiKey?: string
-): Promise<Chat | CustomSession> => {
+): Promise<AISession> => {
   
   // 1. Resolve API Key
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
@@ -28,7 +26,7 @@ export const createChatSession = async (
     throw new Error("MISSING_API_KEY: No valid API key found. Please configure it in Admin settings or environment.");
   }
 
-  // 2. DETECT PROVIDER STRATEGY
+  // 2. Determine Provider Strategy
   const isGenericEndpoint = baseUrl && (
     baseUrl.includes('huggingface') || 
     baseUrl.includes('deepseek') || 
@@ -37,91 +35,57 @@ export const createChatSession = async (
     !modelName.toLowerCase().includes('gemini') 
   );
 
-  if (isGenericEndpoint) {
-    return {
-      isCustom: true,
-      modelName,
-      baseUrl: baseUrl.replace(/\/$/, ''), // Remove trailing slash
-      apiKey,
-      systemInstruction,
-      history: history
-        .filter(msg => msg.role === 'user' || msg.role === 'model')
-        .map(msg => ({
-          role: msg.role === 'model' ? 'assistant' : 'user',
-          content: msg.text
-        }))
-    };
-  }
-
-  // 3. STANDARD GEMINI SDK INITIALIZATION
-  const clientOptions: any = { apiKey: apiKey };
-  if (baseUrl && baseUrl.trim().length > 0) {
-    clientOptions.baseUrl = baseUrl;
-  }
-  
-  const ai = new GoogleGenAI(clientOptions);
-
-  const formattedHistory: Content[] = history
-    .filter(msg => msg.role === 'user' || msg.role === 'model')
-    .map((msg) => ({
-      role: msg.role,
-      parts: [{ text: msg.text }],
-    }));
-
-  try {
-      const chat = ai.chats.create({
-        model: modelName,
-        config: {
-          systemInstruction: systemInstruction,
-        },
-        history: formattedHistory,
-      });
-      return chat;
-  } catch (error) {
-      console.error("Failed to create chat session:", error);
-      throw error;
-  }
+  // 3. Return a session object (stateless config holder)
+  return {
+    modelName,
+    baseUrl: baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
+    apiKey,
+    systemInstruction,
+    history: [...history], // Clone history
+    isGeneric: !!isGenericEndpoint
+  };
 };
 
 export const sendMessageToGemini = async (
-  chatSession: Chat | CustomSession,
+  session: AISession,
   message: string
 ): Promise<string> => {
-  if (!chatSession) {
+  if (!session) {
     throw new Error("SESSION_INVALID: Chat session is not initialized.");
   }
 
-  // --- PATH A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek) ---
-  if ('isCustom' in chatSession && chatSession.isCustom) {
-      const session = chatSession as CustomSession;
-      
+  // --- PATH A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek/OpenAI) ---
+  if (session.isGeneric) {
       try {
+        // Construct OpenAI-compatible messages array
+        const messages = [
+            { role: "system", content: session.systemInstruction },
+            ...session.history.map(msg => ({
+                role: msg.role === 'model' ? 'assistant' : 'user',
+                content: msg.text
+            })),
+            { role: "user", content: message }
+        ];
+
         const payload = {
             model: session.modelName,
-            messages: [
-                { role: "system", content: session.systemInstruction },
-                ...session.history,
-                { role: "user", content: message }
-            ],
+            messages: messages,
             stream: false
         };
 
+        // Normalize Endpoint
         let endpoint = session.baseUrl;
-        // Heuristic: If URL doesn't look like a full endpoint, append standard chat path
-        if (!endpoint.includes('/chat/completions') && !endpoint.includes('/generate')) {
-            endpoint = `${endpoint}/chat/completions`;
+        if (!endpoint.endsWith('/chat/completions') && !endpoint.endsWith('/generate')) {
+            endpoint = endpoint.replace(/\/$/, '') + '/chat/completions';
         }
         
-        // AUTH HEADER LOGIC: Robust handling for Bearer/Basic
+        // Auth Header Logic
         let authHeader = '';
         const cleanKey = session.apiKey.trim();
-        
-        if (cleanKey.toLowerCase().startsWith('basic ')) {
-            authHeader = cleanKey; // User provided full Basic auth string
-        } else if (cleanKey.toLowerCase().startsWith('bearer ')) {
-            authHeader = cleanKey; // User provided full Bearer string
+        if (cleanKey.toLowerCase().startsWith('basic ') || cleanKey.toLowerCase().startsWith('bearer ')) {
+            authHeader = cleanKey;
         } else {
-            authHeader = `Bearer ${cleanKey}`; // Default to Bearer
+            authHeader = `Bearer ${cleanKey}`;
         }
 
         const response = await fetch(endpoint, {
@@ -143,9 +107,9 @@ export const sendMessageToGemini = async (
 
         if (!reply) throw new Error("Empty response from external model.");
 
-        // Update local history for the session so subsequent messages maintain context
-        session.history.push({ role: 'user', content: message });
-        session.history.push({ role: 'assistant', content: reply });
+        // Update local session history (optional, as main UI handles persistence)
+        session.history.push({ id: Date.now().toString(), role: 'user', text: message, timestamp: Date.now() });
+        session.history.push({ id: (Date.now()+1).toString(), role: 'model', text: reply, timestamp: Date.now() });
 
         return reply;
 
@@ -155,19 +119,74 @@ export const sendMessageToGemini = async (
       }
   }
 
-  // --- PATH B: STANDARD GEMINI SDK ---
+  // --- PATH B: GOOGLE GEMINI REST API (Direct Fetch) ---
   try {
-    const geminiChat = chatSession as Chat;
-    const response = await geminiChat.sendMessage({
-      message: message,
-    });
-    
-    return response.text || "";
+      // 1. Construct Google Endpoint
+      const endpoint = `${session.baseUrl}/models/${session.modelName}:generateContent?key=${session.apiKey}`;
+
+      // 2. Format History for Gemini (role: 'user' | 'model', parts: [{text: ...}])
+      const contents = session.history
+          .filter(msg => msg.role === 'user' || msg.role === 'model')
+          .map(msg => ({
+              role: msg.role,
+              parts: [{ text: msg.text }]
+          }));
+      
+      // Add current message
+      contents.push({
+          role: 'user',
+          parts: [{ text: message }]
+      });
+
+      // 3. Payload
+      const payload = {
+          contents: contents,
+          systemInstruction: {
+              parts: [{ text: session.systemInstruction }]
+          },
+          generationConfig: {
+              // Optional: Add default generation config here if needed
+              temperature: 0.9, 
+          }
+      };
+
+      // 4. Execute Fetch
+      const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+          const errText = await response.text();
+          if (response.status === 403) throw new Error("ACCESS_DENIED: API Key invalid or quota exceeded.");
+          throw new Error(`Gemini API Error (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json();
+      
+      // 5. Extract Text
+      // Response structure: candidates[0].content.parts[0].text
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!reply) {
+          // Check for safety blocks
+          if (data.promptFeedback?.blockReason) {
+              throw new Error(`BLOCKED: ${data.promptFeedback.blockReason}`);
+          }
+          throw new Error("Empty response from Gemini.");
+      }
+
+      // Update session history
+      session.history.push({ id: Date.now().toString(), role: 'user', text: message, timestamp: Date.now() });
+      session.history.push({ id: (Date.now()+1).toString(), role: 'model', text: reply, timestamp: Date.now() });
+
+      return reply;
+
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    if (error.message && error.message.includes('403')) {
-        throw new Error("ACCESS_DENIED: API Key invalid or quota exceeded.");
-    }
-    throw new Error(`UPLINK FAILED: ${error.message || "Connection dropped"}`);
+      console.error("Gemini Direct API Error:", error);
+      throw new Error(`UPLINK FAILED: ${error.message}`);
   }
 };

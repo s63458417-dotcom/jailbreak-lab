@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
@@ -62,7 +61,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     safeJSONParse('pentest_personas', INITIAL_PERSONAS)
   );
   
-  const [chats, setChats] = useState<Record<string, ChatSession>>({});
+  const [chats, setChats] = useState<Record<string, ChatSession>>(() => 
+    safeJSONParse('pentest_chats', {})
+  );
   
   const [config, setConfig] = useState<SystemConfig>(() => 
     safeJSONParse('pentest_config', DEFAULT_CONFIG)
@@ -79,6 +80,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- PERSISTENCE ---
   useEffect(() => { localStorage.setItem('pentest_personas', JSON.stringify(personas)); }, [personas]);
+  useEffect(() => { localStorage.setItem('pentest_chats', JSON.stringify(chats)); }, [chats]);
   useEffect(() => { localStorage.setItem('pentest_config', JSON.stringify(config)); document.title = config.appName; }, [config]);
   useEffect(() => { localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools)); }, [keyPools]);
   useEffect(() => { localStorage.setItem('pentest_usage_logs', JSON.stringify(usageLogs)); }, [usageLogs]);
