@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -8,7 +7,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
-  const { personas, getChatMessages } = useStore();
+  const { personas, getChatHistory } = useStore();
   const { user, unlockPersona, getPersonaAccessTime, isAdmin } = useAuth();
   const [keyInput, setKeyInput] = useState<{ [id: string]: string }>({});
   const [errorMap, setErrorMap] = useState<{ [id: string]: string }>({});
@@ -64,7 +63,7 @@ const UserDashboard: React.FC = () => {
       const isLocked = persona.isLocked;
       const unlockedAt = getPersonaAccessTime(persona.id);
       
-      const history = user ? getChatMessages(user.id, persona.id) : [];
+      const history = user ? getChatHistory(user.id, persona.id) : [];
       const hasHistory = history.length > 0;
       const lastActive = hasHistory ? history[history.length - 1].timestamp : null;
 

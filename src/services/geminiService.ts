@@ -1,3 +1,4 @@
+
 import { ChatMessage } from "../types";
 
 // --- Types ---
@@ -35,23 +36,6 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise
     }
 };
 
-const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, backoff = 1000): Promise<Response> => {
-    try {
-        const response = await fetchWithTimeout(url, options);
-        if (!response.ok && response.status >= 500 && retries > 0) {
-            await new Promise(r => setTimeout(r, backoff));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2);
-        }
-        return response;
-    } catch (error: any) {
-        if (retries > 0 && (error.message.includes('Failed to fetch') || error.message.includes('Network'))) {
-            await new Promise(r => setTimeout(r, backoff));
-            return fetchWithRetry(url, options, retries - 1, backoff * 2);
-        }
-        throw error;
-    }
-};
-
 // --- Main Service Functions ---
 
 export const createChatSession = async (
@@ -69,25 +53,16 @@ export const createChatSession = async (
     console.warn("System Warning: No API key detected.");
   }
 
-  // Smart Provider Detection
-  // 1. Is it explicitly Google/Gemini?
-  const isGoogle = (baseUrl && baseUrl.includes('googleapis.com')) || 
-                   (!baseUrl && modelName.toLowerCase().includes('gemini'));
-
-  // 2. Is it Generic (OpenAI/HF/Groq)? 
-  // If user provides a baseUrl that isn't googleapis, assume Generic/Custom
+  // FORCE CUSTOM if a URL is provided and it is NOT googleapis
   let isCustom = false;
-  if (baseUrl && !baseUrl.includes('googleapis.com')) {
-      isCustom = true;
-  } else if (!isGoogle && !baseUrl) {
-      // Fallback: If not google model and no url, it's weird, but default to Google SDK behavior
-      isCustom = false; 
+  if (baseUrl && baseUrl.trim().length > 0) {
+      if (!baseUrl.includes('googleapis.com')) {
+          isCustom = true;
+      }
   }
 
-  // Clean URL slightly but preserve full paths if provided
+  // Clean URL
   let finalBaseUrl = baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-  
-  // Only strip trailing slash if it's just a root, to avoid double slashes later
   if (finalBaseUrl.endsWith('/')) {
       finalBaseUrl = finalBaseUrl.slice(0, -1);
   }
@@ -111,20 +86,20 @@ export const sendMessageToGemini = async (
   }
 
   try {
-    // --- STRATEGY A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek/Groq) ---
+    // ============================================================
+    // STRATEGY A: CUSTOM / GENERIC (OpenAI/HF/DeepSeek)
+    // ============================================================
     if (session.isCustom) {
-      // Logic: If the model name is empty, we send a dummy one or omit it? OpenAI requires it.
-      // If the User provided a FULL URL, we use it. If not, we append /chat/completions.
       
       let endpoint = session.baseUrl;
-      const isFullUrl = endpoint.includes('/chat/completions') || endpoint.includes('/generate');
       
-      if (!isFullUrl) {
+      // Heuristic: If URL doesn't look like a full endpoint, append standard chat path
+      if (!endpoint.includes('/chat/completions') && !endpoint.includes('/generate')) {
           endpoint = `${endpoint}/chat/completions`;
       }
 
       const payload = {
-          model: session.modelName || 'default', // Fallback for APIs that require field but ignore value
+          model: session.modelName, 
           messages: [
               { role: "system", content: session.systemInstruction },
               ...session.history.map(m => ({
@@ -136,12 +111,11 @@ export const sendMessageToGemini = async (
           stream: false
       };
 
-      const response = await fetchWithRetry(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.apiKey}`,
-              'Connection': 'keep-alive'
+              'Authorization': `Bearer ${session.apiKey}`
           },
           body: JSON.stringify(payload)
       });
@@ -153,19 +127,20 @@ export const sendMessageToGemini = async (
 
       const data = await response.json();
       const reply = data.choices?.[0]?.message?.content || "";
-      if (!reply) throw new Error("Empty response from external model.");
+      if (!reply) throw new Error("Empty response from custom model.");
       return reply;
     }
 
-    // --- STRATEGY B: STANDARD GOOGLE GEMINI REST API ---
+    // ============================================================
+    // STRATEGY B: GOOGLE GEMINI (REST)
+    // ============================================================
     else {
       let endpoint = '';
 
-      // Check for Custom/Vertex Full URL (e.g. .../models/gemini-pro:generateContent)
+      // Check for Vertex AI style or standard
       if (session.baseUrl.includes(':generateContent')) {
           endpoint = `${session.baseUrl}?key=${session.apiKey}`;
       } else {
-          // Standard construction
           endpoint = `${session.baseUrl}/models/${session.modelName}:generateContent?key=${session.apiKey}`;
       }
 
@@ -189,11 +164,10 @@ export const sendMessageToGemini = async (
           };
       }
 
-      const response = await fetchWithRetry(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
-              'Content-Type': 'application/json',
-              'Connection': 'keep-alive' 
+              'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
       });
@@ -201,19 +175,25 @@ export const sendMessageToGemini = async (
       if (!response.ok) {
          const errData = await response.json().catch(() => ({}));
          const errMsg = errData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-         if (errMsg.includes('API key')) throw new Error("ACCESS_DENIED: Invalid API Key.");
-         throw new Error(`Uplink Error: ${errMsg}`);
+         // Detect Quota/Expiration for Failover
+         if (response.status === 429 || errMsg.includes('Quota') || errMsg.includes('Too Many Requests')) {
+             throw new Error("QUOTA_EXCEEDED: Token limit reached.");
+         }
+         if (response.status === 403 || errMsg.includes('API key')) {
+             throw new Error("ACCESS_DENIED: Invalid or expired API Key.");
+         }
+         throw new Error(`Google API Error: ${errMsg}`);
       }
 
       const data = await response.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-      if (!reply) throw new Error("Empty response from neural net.");
+      if (!reply) throw new Error("Empty response from Gemini.");
       return reply;
     }
 
   } catch (error: any) {
     console.error("Uplink Failed:", error);
-    throw new Error(error.message || "Connection dropped.");
+    throw error;
   }
 };

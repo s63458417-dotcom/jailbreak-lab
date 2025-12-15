@@ -3,14 +3,14 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { Persona, SystemConfig, ChatMessage, KeyPool } from '../types';
+import { Persona, SystemConfig, ChatSession, KeyPool } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
 
 const AdminPanel: React.FC = () => {
   const { 
       personas, addPersona, updatePersona, deletePersona, 
-      config, updateConfig, getAllChats,
+      config, updateConfig, allChats,
       keyPools, addKeyPool, updateKeyPool, deleteKeyPool
   } = useStore();
   const { getAllUsers } = useAuth();
@@ -63,6 +63,7 @@ const AdminPanel: React.FC = () => {
   const [poolKeysText, setPoolKeysText] = useState('');
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
 
+
   const resetForm = () => {
     setFormData(defaultForm);
     setEditingId(null);
@@ -95,10 +96,11 @@ const AdminPanel: React.FC = () => {
         alert("Name and System Prompt are required.");
         return;
     }
+
     const payload = { ...formData };
-    // Clean up empty strings
-    if (payload.keyPoolId === '') delete payload.keyPoolId;
-    if (payload.customApiKey === '') delete payload.customApiKey;
+    // Clean up empty strings to avoid undefined behavior or persistence bloat
+    if (!payload.keyPoolId) delete payload.keyPoolId;
+    if (!payload.customApiKey) delete payload.customApiKey;
 
     if (editingId) {
         updatePersona({ ...payload, id: editingId } as Persona);
@@ -145,6 +147,7 @@ const AdminPanel: React.FC = () => {
   };
 
 
+  // Avatar Configuration
   const AVATAR_OPTIONS = [
     { id: 'shield', label: 'Defense', desc: 'Blue Team / Protection', color: 'text-brand-500', bgColor: 'bg-brand-900/20', borderColor: 'border-brand-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
     { id: 'target', label: 'Offense', desc: 'Red Team / Attack', color: 'text-red-500', bgColor: 'bg-red-900/20', borderColor: 'border-red-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg> },
@@ -153,6 +156,7 @@ const AdminPanel: React.FC = () => {
   ];
   const selectedAvatar = AVATAR_OPTIONS.find(a => a.id === formData.avatar) || AVATAR_OPTIONS[0];
 
+  // --- Branding Logic ---
   const [brandingForm, setBrandingForm] = useState<SystemConfig>(config);
   const handleBrandingSave = (e: React.FormEvent) => {
       e.preventDefault();
@@ -160,6 +164,7 @@ const AdminPanel: React.FC = () => {
       alert("System configuration updated.");
   };
 
+  // --- Analytics / User Analysis Logic ---
   const users = getAllUsers();
   const [inspectUserId, setInspectUserId] = useState<string | null>(null);
   
@@ -168,14 +173,12 @@ const AdminPanel: React.FC = () => {
       let activeChats = 0;
       let lastActive = 0;
 
-      const allChats = getAllChats();
-
       Object.entries(allChats).forEach(([key, val]) => {
-          const messages = val as ChatMessage[];
+          const session = val as ChatSession;
           if (key.startsWith(userId + '_')) {
               activeChats++;
-              msgCount += messages.length;
-              const lastMsg = messages[messages.length - 1];
+              msgCount += session.messages.length;
+              const lastMsg = session.messages[session.messages.length - 1];
               if (lastMsg && lastMsg.timestamp > lastActive) {
                   lastActive = lastMsg.timestamp;
               }
@@ -194,15 +197,13 @@ const AdminPanel: React.FC = () => {
         timestamp: number;
     }> = [];
 
-    const allChats = getAllChats();
-
     Object.entries(allChats).forEach(([key, val]) => {
-        const messages = val as ChatMessage[];
+        const session = val as ChatSession;
         if (key.startsWith(inspectUserId + '_')) {
             const personaId = key.split('_')[1];
             const personaName = personas.find(p => p.id === personaId)?.name || 'Unknown Agent';
             
-            messages.forEach(msg => {
+            session.messages.forEach(msg => {
                 logs.push({
                     personaName,
                     role: msg.role,
@@ -215,7 +216,7 @@ const AdminPanel: React.FC = () => {
 
     return logs.sort((a, b) => b.timestamp - a.timestamp);
 
-  }, [inspectUserId, getAllChats, personas]);
+  }, [inspectUserId, allChats, personas]);
 
 
   return (

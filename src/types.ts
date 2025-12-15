@@ -12,11 +12,11 @@ export interface User {
   unlockedPersonas: Record<string, number>; 
 }
 
-// New Interface for Token Boxes
+// New Interface for Token Boxes (Key Vaults)
 export interface KeyPool {
   id: string;
   name: string;
-  provider: 'google' | 'openai' | 'custom'; // For UI sorting
+  provider: 'google' | 'openai' | 'custom';
   keys: string[]; // List of all keys
   deadKeys: Record<string, number>; // Map of Key -> Timestamp when it failed
 }
@@ -44,6 +44,11 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+}
+
+export interface ChatSession {
+  personaId: string;
+  messages: ChatMessage[];
 }
 
 export interface SystemConfig {

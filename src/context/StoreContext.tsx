@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Persona, ChatMessage, SystemConfig, KeyPool } from '../types';
+import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
 
 interface StoreContextType {
@@ -9,15 +9,14 @@ interface StoreContextType {
   updatePersona: (persona: Persona) => void;
   deletePersona: (id: string) => void;
   
-  // Chat
-  getChatMessages: (userId: string, personaId: string) => ChatMessage[];
-  saveMessage: (userId: string, personaId: string, message: ChatMessage) => void;
-  clearChat: (userId: string, personaId: string) => void;
-
+  // Chat History (Ephemeral now - kept in interface for compatibility but won't persist)
+  getChatHistory: (userId: string, personaId: string) => ChatMessage[];
+  saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => void;
+  clearChatHistory: (userId: string, personaId: string) => void;
+  
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => void;
-  
-  getAllChats: () => Record<string, ChatMessage[]>;
+  allChats: Record<string, ChatSession>;
 
   // Key Vault
   keyPools: KeyPool[];
@@ -30,17 +29,19 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const safeJSONParse = (key: string, fallback: any) => {
+// Robust local storage helper with type validation
+const getStorage = <T,>(key: string, fallback: T, validator?: (data: any) => boolean): T => {
   try {
     const saved = localStorage.getItem(key);
     if (!saved) return fallback;
     const parsed = JSON.parse(saved);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && key.includes('chats')) {
-        return parsed;
+    if (validator && !validator(parsed)) {
+      console.warn(`Data validation failed for ${key}, using fallback.`);
+      return fallback;
     }
     return parsed;
   } catch (e) {
-    console.warn(`Corrupted data in ${key}, resetting.`, e);
+    console.error(`Failed to load ${key}`, e);
     return fallback;
   }
 };
@@ -52,78 +53,133 @@ const DEFAULT_CONFIG: SystemConfig = {
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [personas, setPersonas] = useState<Persona[]>(() => safeJSONParse('pentest_personas', INITIAL_PERSONAS));
-  const [chats, setChats] = useState<Record<string, ChatMessage[]>>(() => safeJSONParse('pentest_simple_chats', {}));
-  const [config, setConfig] = useState<SystemConfig>(() => safeJSONParse('pentest_config', DEFAULT_CONFIG));
-  const [keyPools, setKeyPools] = useState<KeyPool[]>(() => safeJSONParse('pentest_key_pools', []));
+  // Load Personas
+  const [personas, setPersonas] = useState<Persona[]>(() => 
+    getStorage('pentest_personas', INITIAL_PERSONAS, (data) => Array.isArray(data))
+  );
 
-  useEffect(() => localStorage.setItem('pentest_personas', JSON.stringify(personas)), [personas]);
-  useEffect(() => localStorage.setItem('pentest_simple_chats', JSON.stringify(chats)), [chats]);
+  // In-Memory Chat State (No LocalStorage Persistence)
+  const [chats, setChats] = useState<Record<string, ChatSession>>({});
+
+  // Load Config
+  const [config, setConfig] = useState<SystemConfig>(() => 
+    getStorage('pentest_config', DEFAULT_CONFIG)
+  );
+
+  // Load Key Pools
+  const [keyPools, setKeyPools] = useState<KeyPool[]>(() => 
+    getStorage('pentest_key_pools', [], (data) => Array.isArray(data))
+  );
+
+  // --- Persistence Effects ---
+  useEffect(() => {
+    localStorage.setItem('pentest_personas', JSON.stringify(personas));
+  }, [personas]);
+
+  // REMOVED: Chat history persistence effect
+  // useEffect(() => { localStorage.setItem('pentest_chats', ...); }, [chats]);
+
   useEffect(() => {
     localStorage.setItem('pentest_config', JSON.stringify(config));
     document.title = config.appName;
   }, [config]);
-  useEffect(() => localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools)), [keyPools]);
 
-  // --- Persona Actions ---
-  const addPersona = useCallback((persona: Persona) => setPersonas(prev => [...prev, persona]), []);
-  const updatePersona = useCallback((p: Persona) => setPersonas(prev => prev.map(old => old.id === p.id ? p : old)), []);
-  const deletePersona = useCallback((id: string) => setPersonas(prev => prev.filter(p => p.id !== id)), []);
+  useEffect(() => {
+    localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools));
+  }, [keyPools]);
 
-  // --- Chat Actions ---
-  const getChatMessages = useCallback((userId: string, personaId: string) => chats[`${userId}_${personaId}`] || [], [chats]);
-  const saveMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
-      setChats(prev => ({
-          ...prev,
-          [`${userId}_${personaId}`]: [...(prev[`${userId}_${personaId}`] || []), message]
-      }));
+
+  // --- Actions ---
+
+  const addPersona = useCallback((persona: Persona) => {
+    setPersonas((prev) => [...prev, persona]);
   }, []);
-  const clearChat = useCallback((userId: string, personaId: string) => {
-      setChats(prev => {
-          const newState = { ...prev };
-          delete newState[`${userId}_${personaId}`];
-          return newState;
-      });
-  }, []);
-  const getAllChats = useCallback(() => chats, [chats]);
-  const updateConfig = useCallback((newConfig: SystemConfig) => setConfig(newConfig), []);
 
-  // --- Key Vault Logic ---
-  const addKeyPool = useCallback((pool: KeyPool) => setKeyPools(prev => [...prev, pool]), []);
-  const updateKeyPool = useCallback((pool: KeyPool) => setKeyPools(prev => prev.map(p => p.id === pool.id ? pool : p)), []);
-  const deleteKeyPool = useCallback((id: string) => setKeyPools(prev => prev.filter(p => p.id !== id)), []);
+  const updatePersona = useCallback((updatedPersona: Persona) => {
+    setPersonas((prev) => prev.map(p => p.id === updatedPersona.id ? updatedPersona : p));
+  }, []);
+
+  const deletePersona = useCallback((id: string) => {
+    setPersonas((prev) => prev.filter(p => p.id !== id));
+  }, []);
+
+  const getChatHistory = useCallback((userId: string, personaId: string) => {
+    // Return empty array to force fresh chat every time, 
+    // or return in-memory chats if we want history ONLY during the current session tab.
+    // User requested "Remove that chat history", implies ephemeral.
+    return chats[`${userId}_${personaId}`]?.messages || [];
+  }, [chats]);
+
+  const saveChatMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
+    const key = `${userId}_${personaId}`;
+    setChats((prev) => {
+      const existingSession = prev[key] || { personaId, messages: [] };
+      return {
+        ...prev,
+        [key]: {
+          ...existingSession,
+          messages: [...existingSession.messages, message],
+        },
+      };
+    });
+  }, []);
+
+  const clearChatHistory = useCallback((userId: string, personaId: string) => {
+    const key = `${userId}_${personaId}`;
+    setChats((prev) => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+    });
+  }, []);
+
+  const updateConfig = useCallback((newConfig: SystemConfig) => {
+    setConfig(newConfig);
+  }, []);
+
+  // --- Key Vault Actions ---
+
+  const addKeyPool = useCallback((pool: KeyPool) => {
+    setKeyPools(prev => [...prev, pool]);
+  }, []);
+
+  const updateKeyPool = useCallback((pool: KeyPool) => {
+    setKeyPools(prev => prev.map(p => p.id === pool.id ? pool : p));
+  }, []);
+
+  const deleteKeyPool = useCallback((id: string) => {
+    setKeyPools(prev => prev.filter(p => p.id !== id));
+  }, []);
 
   const reportKeyFailure = useCallback((poolId: string, key: string) => {
-      setKeyPools(prev => prev.map(pool => {
-          if (pool.id !== poolId) return pool;
-          return {
-              ...pool,
-              deadKeys: { ...pool.deadKeys, [key]: Date.now() }
-          };
-      }));
+    setKeyPools(prev => prev.map(pool => {
+        if (pool.id !== poolId) return pool;
+        return {
+            ...pool,
+            deadKeys: { ...pool.deadKeys, [key]: Date.now() }
+        };
+    }));
   }, []);
 
   const getValidKey = useCallback((poolId: string): string | null => {
       const pool = keyPools.find(p => p.id === poolId);
       if (!pool || pool.keys.length === 0) return null;
 
-      // Filter out dead keys
+      // Filter out keys that are dead
       const validKeys = pool.keys.filter(k => !pool.deadKeys[k]);
       
-      if (validKeys.length === 0) {
-          // OPTIONAL: Revive keys after 1 hour? For now, rigorous death.
-          return null;
-      }
+      if (validKeys.length === 0) return null;
 
-      // Simple rotation: Random or Round Robin. Random is better for distributing load across many user instances.
-      return validKeys[Math.floor(Math.random() * validKeys.length)];
+      // SEQUENTIAL SELECTION: Always pick the first valid key.
+      // This ensures we burn through keys one by one.
+      return validKeys[0];
   }, [keyPools]);
 
   return (
     <StoreContext.Provider value={{ 
       personas, addPersona, updatePersona, deletePersona,
-      getChatMessages, saveMessage, clearChat,
-      config, updateConfig, getAllChats,
+      getChatHistory, saveChatMessage, clearChatHistory,
+      config, updateConfig, allChats: chats,
       keyPools, addKeyPool, updateKeyPool, deleteKeyPool, reportKeyFailure, getValidKey
     }}>
       {children}

@@ -65,7 +65,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
-  const { personas, getChatMessages, saveMessage, clearChat, getValidKey, reportKeyFailure } = useStore();
+  const { personas, getValidKey, reportKeyFailure, saveChatMessage } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   const persona = personas.find(p => p.id === personaId);
   
@@ -77,15 +77,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Load Messages
+  // 1. Initialize - NO HISTORY LOADING
   useEffect(() => {
-      if (!user || !persona) return;
-      const history = getChatMessages(user.id, personaId);
-      setMessages(history);
-      
-      // Focus input on load
+      // Clear messages on mount/persona change to ensure fresh start
+      setMessages([]);
       setTimeout(() => inputRef.current?.focus(), 100);
-  }, [personaId, user, getChatMessages]);
+  }, [personaId]);
 
   // 2. Security Check
   useEffect(() => {
@@ -106,10 +103,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
 
   // --- Helpers ---
   
-  // Logic to determine which key to use:
-  // 1. Key Pool if assigned (Preferred)
-  // 2. Custom API Key if assigned
-  // 3. Environment Variable (handled in service)
   const getActiveKey = () => {
       if (persona?.keyPoolId) {
           const key = getValidKey(persona.keyPoolId);
@@ -120,11 +113,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
 
   const handleClearChat = () => {
       if (confirmClear) {
-          if (user && persona) {
-              clearChat(user.id, personaId);
-              setMessages([]);
-              setConfirmClear(false);
-          }
+          setMessages([]);
+          setConfirmClear(false);
       } else {
           setConfirmClear(true);
           setTimeout(() => setConfirmClear(false), 3000);
@@ -136,16 +126,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
 
       const { key, source } = getActiveKey();
 
-      // If we are using a pool but no key returned, it means the pool is empty/dead
       if (source === 'pool' && !key) {
-          throw new Error("KEY VAULT DEPLETED: All tokens in this box are dead or rate-limited. Please add fresh tokens in Admin Console.");
+          throw new Error("KEY VAULT DEPLETED: All tokens in this box are dead. Add fresh tokens in Admin Console.");
       }
 
       try {
+          // Create session with current messages (Context)
+          // We pass 'messages' here to maintain conversation context within this session
           const apiSession = await createChatSession(
               persona.model,
               persona.systemPrompt,
-              messages,
+              messages, 
               persona.baseUrl,
               key 
           );
@@ -155,20 +146,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
       } catch (error: any) {
           const errMsg = error.message || '';
           const isAuthError = errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('ACCESS_DENIED');
-          const isQuotaError = errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('Too Many Requests');
+          const isQuotaError = errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('Too Many Requests') || errMsg.includes('QUOTA_EXCEEDED');
 
           // FAILOVER LOGIC
           if ((isAuthError || isQuotaError) && source === 'pool' && persona.keyPoolId && attempt < 5) {
               // 1. Mark this specific key as dead
               if (key) reportKeyFailure(persona.keyPoolId, key);
               
-              console.warn(`Token died (${key?.substring(0,6)}...), rotating...`);
+              console.warn(`Token died (${key?.substring(0,6)}...), switching to next available token...`);
               
-              // 2. Recurse (Try again) - getActiveKey() will now fetch the NEXT available key
+              // 2. Recurse (Try again) - getActiveKey() will now fetch the NEXT available key because the previous one is marked dead
               return await executeSend(text, attempt + 1);
           }
 
-          // If not a pool error, or retries exhausted, throw up
           throw error;
       }
   };
@@ -189,7 +179,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     };
 
     setMessages(prev => [...prev, userMsg]);
-    saveMessage(user.id, persona.id, userMsg);
+    // Note: We deliberately do NOT save to persistent storage anymore
+    // saveChatMessage(user.id, persona.id, userMsg); 
     
     setIsSending(true);
 
@@ -204,7 +195,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
       };
 
       setMessages(prev => [...prev, modelMsg]);
-      saveMessage(user.id, persona.id, modelMsg);
+      // saveChatMessage(user.id, persona.id, modelMsg);
 
     } catch (error: any) {
       const errorMsg: ChatMessage = {
@@ -248,7 +239,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
                             </span>
-                            {persona.keyPoolId ? 'VAULT LINK ACTIVE' : 'SECURE UPLINK ACTIVE'}
+                            {persona.keyPoolId ? 'VAULT LINK ACTIVE (EPHEMERAL)' : 'SECURE UPLINK ACTIVE'}
                         </div>
                     </div>
                 </div>
@@ -262,11 +253,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                     }`}
                 >
                      {confirmClear ? (
-                         <span>Confirm Purge?</span>
+                         <span>Confirm Wipe?</span>
                      ) : (
                         <>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            <span className="hidden sm:inline">Purge Logs</span>
+                            <span className="hidden sm:inline">Wipe</span>
                         </>
                      )}
                 </button>

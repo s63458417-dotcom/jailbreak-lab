@@ -18,7 +18,7 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = {
+  state: ErrorBoundaryState = {
     hasError: false,
     error: null
   };
@@ -82,7 +82,9 @@ const AppContent: React.FC = () => {
   if (route.startsWith('#/chat/')) {
     const parts = route.split('/chat/');
     if (parts.length > 1) {
-        return <ChatInterface personaId={parts[1]} />;
+        // Strip any extra params if they exist from old links
+        const personaId = parts[1].split('/')[0];
+        return <ChatInterface personaId={personaId} />;
     }
   }
   
