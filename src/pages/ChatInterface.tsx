@@ -72,7 +72,10 @@ const getPersonaIcon = (type: string) => {
 }
 
 const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
-  const { personas, getChatHistory, saveChatMessage, clearChatHistory, config } = useStore();
+  const { 
+    personas, getChatHistory, saveChatMessage, clearChatHistory, config,
+    getValidKey, reportKeyFailure
+  } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   
   const persona = personas.find(p => p.id === personaId);
@@ -83,6 +86,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [chatSession, setChatSession] = useState<any>(null);
   const [sessionKey, setSessionKey] = useState(0); 
   const [confirmClear, setConfirmClear] = useState(false);
+  const [currentKey, setCurrentKey] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,25 +117,50 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     setConfirmClear(false);
     const history = getChatHistory(user.id, personaId);
     setMessages(history);
+    
     let mounted = true;
     setIsConnecting(true);
+
     const initGemini = async () => {
       try {
+        // --- KEY SELECTION LOGIC ---
+        let selectedKey = persona.customApiKey;
+        
+        // If Vault is active, prioritize fetching from Pool
+        if (persona.keyPoolId) {
+             const vaultKey = getValidKey(persona.keyPoolId);
+             if (!vaultKey) {
+                 throw new Error("KEY VAULT EXHAUSTED: No active keys available in pool.");
+             }
+             selectedKey = vaultKey;
+        }
+
+        if (mounted) setCurrentKey(selectedKey || null);
+
         const session = await createChatSession(
             persona.model,
             persona.systemPrompt,
             history,
             persona.baseUrl,
-            persona.customApiKey
+            selectedKey
         );
+        
         if (mounted) {
             setChatSession(session);
             setIsConnecting(false);
             setTimeout(() => inputRef.current?.focus(), 100);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Chat Init Failed", e);
-        if (mounted) setIsConnecting(false);
+        if (mounted) {
+            setIsConnecting(false);
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'model',
+                text: `**SYSTEM ALERT:** Connection Initialization Failed.\nReason: ${e.message}`,
+                timestamp: Date.now()
+            }]);
+        }
       }
     };
     initGemini();
@@ -184,13 +213,33 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
       saveChatMessage(user.id, persona.id, modelMsg);
 
     } catch (error: any) {
-      const errorMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        text: error.message || "**SYSTEM ERROR:** Uplink unstable.",
-        timestamp: Date.now(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
+      // --- AUTO-ROTATION LOGIC ---
+      // If error is related to Auth (401/403) or Rate Limit (429), mark key as dead if using a pool.
+      const errStr = error.message || '';
+      if (persona.keyPoolId && currentKey && (errStr.includes('401') || errStr.includes('403') || errStr.includes('429'))) {
+          console.warn(`Reporting key failure for pool ${persona.keyPoolId}`);
+          reportKeyFailure(persona.keyPoolId, currentKey);
+          
+          const errorMsg: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'model',
+            text: `**SYSTEM ALERT:** API Key Failure Detected. Rotating keys... please retry.`,
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, errorMsg]);
+          
+          // Force re-init session to get new key
+          setChatSession(null);
+          setSessionKey(prev => prev + 1);
+      } else {
+          const errorMsg: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'model',
+            text: error.message || "**SYSTEM ERROR:** Uplink unstable.",
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, errorMsg]);
+      }
     } finally {
       setIsSending(false);
       requestAnimationFrame(() => inputRef.current?.focus());
