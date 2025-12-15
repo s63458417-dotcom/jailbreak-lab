@@ -3,13 +3,18 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
 
+// Internal type for tracking usage
+interface UsageRecord {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
 interface StoreContextType {
   personas: Persona[];
   addPersona: (persona: Persona) => void;
   updatePersona: (persona: Persona) => void;
   deletePersona: (id: string) => void;
   
-  // Chat History is now in-memory only (ephemeral)
   getChatHistory: (userId: string, personaId: string) => ChatMessage[];
   saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => void;
   clearChatHistory: (userId: string, personaId: string) => void;
@@ -25,6 +30,10 @@ interface StoreContextType {
   deleteKeyPool: (id: string) => void;
   reportKeyFailure: (poolId: string, key: string) => void;
   getValidKey: (poolId: string) => string | null;
+
+  // Rate Limiting
+  getUsageCount: (userId: string, personaId: string) => number;
+  incrementUsage: (userId: string, personaId: string) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -45,43 +54,36 @@ const DEFAULT_CONFIG: SystemConfig = {
   logoUrl: ''
 };
 
+const getTodayString = () => new Date().toISOString().split('T')[0];
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load Personas
+  // --- STATE ---
   const [personas, setPersonas] = useState<Persona[]>(() => 
     safeJSONParse('pentest_personas', INITIAL_PERSONAS)
   );
-
-  // In-Memory Chat State (No LocalStorage Persistence for privacy/reset)
+  
   const [chats, setChats] = useState<Record<string, ChatSession>>({});
-
-  // Load Config
+  
   const [config, setConfig] = useState<SystemConfig>(() => 
     safeJSONParse('pentest_config', DEFAULT_CONFIG)
   );
-
-  // Load Key Pools
+  
   const [keyPools, setKeyPools] = useState<KeyPool[]>(() => 
     safeJSONParse('pentest_key_pools', [])
   );
 
-  // --- Persistence Effects ---
-  useEffect(() => {
-    localStorage.setItem('pentest_personas', JSON.stringify(personas));
-  }, [personas]);
+  // Persistent Usage Logs: { "userId_personaId": { date: "2023-10-27", count: 10 } }
+  const [usageLogs, setUsageLogs] = useState<Record<string, UsageRecord>>(() => 
+    safeJSONParse('pentest_usage_logs', {})
+  );
 
-  // NOTE: Chats are NOT saved to localStorage anymore.
+  // --- PERSISTENCE ---
+  useEffect(() => { localStorage.setItem('pentest_personas', JSON.stringify(personas)); }, [personas]);
+  useEffect(() => { localStorage.setItem('pentest_config', JSON.stringify(config)); document.title = config.appName; }, [config]);
+  useEffect(() => { localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools)); }, [keyPools]);
+  useEffect(() => { localStorage.setItem('pentest_usage_logs', JSON.stringify(usageLogs)); }, [usageLogs]);
 
-  useEffect(() => {
-    localStorage.setItem('pentest_config', JSON.stringify(config));
-    document.title = config.appName;
-  }, [config]);
-
-  useEffect(() => {
-    localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools));
-  }, [keyPools]);
-
-
-  // --- Actions ---
+  // --- ACTIONS ---
 
   const addPersona = useCallback((persona: Persona) => {
     setPersonas((prev) => [...prev, persona]);
@@ -127,7 +129,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setConfig(newConfig);
   }, []);
 
-  // --- Key Vault Actions ---
+  // --- KEY VAULT ---
 
   const addKeyPool = useCallback((pool: KeyPool) => {
     setKeyPools(prev => [...prev, pool]);
@@ -154,24 +156,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getValidKey = useCallback((poolId: string): string | null => {
       const pool = keyPools.find(p => p.id === poolId);
       if (!pool || pool.keys.length === 0) return null;
-
-      // Filter out keys that are dead
-      // Note: We don't filter them out of the array, we just check deadKeys map
       const validKeys = pool.keys.filter(k => !pool.deadKeys[k]);
-      
       if (validKeys.length === 0) return null;
-
-      // SEQUENTIAL SELECTION: Always pick the first valid key.
-      // This ensures we burn through keys one by one.
       return validKeys[0];
   }, [keyPools]);
+
+  // --- RATE LIMITING ---
+
+  const getUsageCount = useCallback((userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}`;
+      const record = usageLogs[key];
+      const today = getTodayString();
+      
+      if (!record || record.date !== today) {
+          return 0;
+      }
+      return record.count;
+  }, [usageLogs]);
+
+  const incrementUsage = useCallback((userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}`;
+      const today = getTodayString();
+      
+      setUsageLogs(prev => {
+          const current = prev[key];
+          let newCount = 1;
+          
+          if (current && current.date === today) {
+              newCount = current.count + 1;
+          }
+          
+          return {
+              ...prev,
+              [key]: { date: today, count: newCount }
+          };
+      });
+  }, []);
 
   return (
     <StoreContext.Provider value={{ 
       personas, addPersona, updatePersona, deletePersona,
       getChatHistory, saveChatMessage, clearChatHistory,
       config, updateConfig, allChats: chats,
-      keyPools, addKeyPool, updateKeyPool, deleteKeyPool, reportKeyFailure, getValidKey
+      keyPools, addKeyPool, updateKeyPool, deleteKeyPool, reportKeyFailure, getValidKey,
+      getUsageCount, incrementUsage
     }}>
       {children}
     </StoreContext.Provider>
