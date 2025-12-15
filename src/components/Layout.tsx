@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
@@ -29,74 +30,66 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
   };
 
   return (
-    <div className="h-screen flex bg-neutral-950 text-neutral-200 font-sans overflow-hidden">
+    <div className="h-screen flex bg-[#212121] text-[#ececec] font-sans overflow-hidden selection:bg-brand-500/30">
       
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/80 z-[60] lg:hidden backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/50 z-[60] lg:hidden backdrop-blur-sm transition-opacity"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
+      {/* Sidebar - DeepSeek Style: Darker background, minimal borders */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-[70] w-72 bg-neutral-900 border-r border-neutral-800 
-        transform transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1) 
-        flex flex-col flex-shrink-0 shadow-2xl lg:shadow-none
+        fixed lg:static inset-y-0 left-0 z-[70] w-[260px] bg-[#0f0f0f] flex flex-col flex-shrink-0 transition-transform duration-300
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-16 flex items-center px-6 border-b border-neutral-800 bg-neutral-900 flex-shrink-0">
-             <div className="flex items-center gap-3 select-none cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleNav('#/dashboard')}>
+        {/* Top Section: Logo & Toggle */}
+        <div className="h-14 flex items-center justify-between px-4 mt-2 flex-shrink-0">
+             <div className="flex items-center gap-2 select-none cursor-pointer text-brand-400" onClick={() => handleNav('#/dashboard')}>
                 {config.logoUrl ? (
-                   <img src={config.logoUrl} alt="Logo" className="w-8 h-8 rounded object-cover shadow-lg shadow-brand-900/50" />
+                   <img src={config.logoUrl} alt="Logo" className="w-8 h-8 rounded-full" />
                 ) : (
-                   <div className="w-8 h-8 bg-brand-600 rounded flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-brand-900/50">
-                     {config.appName.charAt(0)}
-                   </div>
+                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                     <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"/>
+                   </svg>
                 )}
-                <span className="font-bold text-lg tracking-tight text-white truncate max-w-[150px]">{config.appName}</span>
+                <span className="font-semibold text-lg tracking-tight text-white">{config.appName}</span>
             </div>
+            {/* Sidebar Toggle (Visible only on mobile inside sidebar for closing) */}
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-neutral-400 hover:text-white">
+               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2 custom-scrollbar">
+        {/* New Chat Button */}
+        <div className="px-4 mb-2">
             <button
                 onClick={() => handleNav('#/dashboard')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group cursor-pointer border ${
-                  currentHash === '#/dashboard' || currentHash === '' || currentHash === '#' 
-                  ? 'bg-neutral-800 text-white border-neutral-700 shadow-sm' 
-                  : 'text-neutral-400 border-transparent hover:bg-neutral-800/50 hover:text-white'
-                }`}
+                className="w-full flex items-center gap-2 px-3 py-2 bg-[#2b2b2b] hover:bg-[#353535] text-white rounded-lg transition-colors text-sm font-medium border border-transparent hover:border-[#404040]"
             >
-                <svg className={`w-5 h-5 transition-colors ${currentHash === '#/dashboard' ? 'text-brand-500' : 'text-neutral-500 group-hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                Jailbroken AIs
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                New chat
             </button>
+        </div>
 
+        {/* Navigation List */}
+        <nav className="flex-1 overflow-y-auto px-2 space-y-0.5 custom-scrollbar py-2">
+            {/* Standard Links */}
             {isAdmin && (
                 <button
                     onClick={() => handleNav('#/admin')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group cursor-pointer border ${
-                      currentHash === '#/admin' 
-                      ? 'bg-neutral-800 text-white border-neutral-700 shadow-sm' 
-                      : 'text-neutral-400 border-transparent hover:bg-neutral-800/50 hover:text-white'
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors text-left truncate ${
+                      currentHash === '#/admin' ? 'bg-[#2b2b2b] text-white' : 'text-neutral-400 hover:bg-[#1f1f1f] hover:text-white'
                     }`}
                 >
-                    <svg className={`w-5 h-5 transition-colors ${currentHash === '#/admin' ? 'text-brand-500' : 'text-neutral-500 group-hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     Admin Console
                 </button>
             )}
-            
-            <button
-                onClick={() => handleNav('#/profile')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group cursor-pointer border ${
-                  currentHash === '#/profile' 
-                  ? 'bg-neutral-800 text-white border-neutral-700 shadow-sm' 
-                  : 'text-neutral-400 border-transparent hover:bg-neutral-800/50 hover:text-white'
-                }`}
-            >
-               <svg className={`w-5 h-5 transition-colors ${currentHash === '#/profile' ? 'text-brand-500' : 'text-neutral-500 group-hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-               My Profile
-            </button>
 
-            <div className="pt-6 pb-3 px-4 text-xs font-bold text-neutral-600 uppercase tracking-widest">
+            {/* History Section Header */}
+            <div className="mt-6 mb-2 px-3 text-xs font-medium text-neutral-500">
                 Active Uplinks
             </div>
             
@@ -104,57 +97,50 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
                  <button 
                     key={p.id}
                     onClick={() => handleNav(`#/chat/${p.id}`)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all duration-200 group cursor-pointer border ${
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors text-left truncate group ${
                       activePersonaId === p.id 
-                      ? 'bg-neutral-800 text-white border-neutral-700 shadow-sm' 
-                      : 'text-neutral-400 border-transparent hover:bg-neutral-800/50 hover:text-white'
+                      ? 'bg-[#2b2b2b] text-white' 
+                      : 'text-neutral-400 hover:bg-[#1f1f1f] hover:text-white'
                     }`}
                 >
-                    <div className="relative flex items-center justify-center w-5 h-5">
-                      <span className={`w-2.5 h-2.5 rounded-full absolute ${p.isLocked ? 'bg-neutral-600' : 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]'}`}></span>
-                    </div>
-                    <span className="truncate flex-1 font-medium text-left">{p.name}</span>
-                    {p.isLocked && <svg className="w-4 h-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
+                    <span className="truncate flex-1">{p.name}</span>
                 </button>
             )) : (
-              <div className="px-4 py-2 text-xs text-neutral-600 italic">No personas deployed.</div>
+              <div className="px-3 py-2 text-xs text-neutral-600 italic">No history.</div>
             )}
         </nav>
 
-        <div className="p-4 border-t border-neutral-800 bg-neutral-900/50 flex-shrink-0">
-            <div className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-neutral-800/50 p-2 rounded-lg transition-colors" onClick={() => handleNav('#/profile')}>
-                <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center border border-neutral-700 text-sm font-bold text-neutral-300 shadow-sm overflow-hidden">
+        {/* User Footer - DeepSeek style: Avatar left, Name, Settings icon right? */}
+        <div className="p-3 bg-[#0f0f0f] border-t border-[#1f1f1f]">
+            <div className="flex items-center gap-3 p-2 hover:bg-[#1f1f1f] rounded-lg cursor-pointer transition-colors" onClick={() => handleNav('#/profile')}>
+                <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-xs font-bold text-white">
                     {user?.username.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="flex-1 overflow-hidden">
-                    <p className="text-sm font-bold text-white truncate">{user?.username}</p>
-                    <p className="text-xs text-neutral-500 truncate font-mono">{user?.role}</p>
+                    <p className="text-sm font-medium text-white truncate">{user?.username}</p>
                 </div>
+                <button onClick={(e) => { e.stopPropagation(); logout(); }} className="text-neutral-500 hover:text-white">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                </button>
             </div>
-            <Button variant="secondary" fullWidth onClick={logout} className="text-xs h-10 py-0 border-neutral-700 hover:border-neutral-500">
-               Terminate Session
-            </Button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-full relative bg-neutral-950">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full relative bg-[#212121]">
         
-        <header className="h-16 flex items-center justify-between px-4 border-b border-neutral-800 bg-neutral-900/95 backdrop-blur lg:hidden flex-shrink-0 z-30 sticky top-0">
+        {/* Mobile Header */}
+        <header className="h-14 flex items-center justify-between px-4 border-b border-[#2b2b2b] bg-[#212121] lg:hidden flex-shrink-0 z-30 sticky top-0">
              <div className="flex items-center gap-3">
-                 <button onClick={() => setSidebarOpen(true)} className="text-neutral-400 hover:text-white p-2 -ml-2 rounded-md hover:bg-neutral-800 active:bg-neutral-800/80">
+                 <button onClick={() => setSidebarOpen(true)} className="text-neutral-400 hover:text-white">
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                  </button>
-                 <span className="font-bold text-white truncate max-w-[200px] text-lg">{config.appName}</span>
+                 <span className="font-semibold text-white truncate">{config.appName}</span>
              </div>
+             <div className="w-6"></div> {/* Spacer for balance */}
         </header>
 
-        {!isChatMode && (
-          <header className="hidden lg:flex h-20 items-center justify-between px-10 border-b border-neutral-900 bg-neutral-950 flex-shrink-0">
-               <h1 className="text-3xl font-bold text-white tracking-tight">{title}</h1>
-          </header>
-        )}
-
-        <main className={`flex-1 overflow-hidden relative ${isChatMode ? 'p-0' : 'p-4 lg:p-10 overflow-y-auto'}`}>
+        <main className={`flex-1 overflow-hidden relative ${isChatMode ? 'p-0' : 'p-4 lg:p-8 overflow-y-auto'}`}>
             {children}
         </main>
       </div>

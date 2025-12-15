@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode, useState, useEffect } from 'react';
+import React, { ErrorInfo, ReactNode, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider } from './context/StoreContext';
 import Login from './pages/Login';
