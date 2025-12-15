@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
+import Button from './Button';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -60,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
             </button>
         </div>
 
-        {/* Main Action Button - Jailbroken AIs */}
+        {/* Main Action Button */}
         <div className="px-4 mb-2">
             <button
                 onClick={() => handleNav('#/dashboard')}

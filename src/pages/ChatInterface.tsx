@@ -7,10 +7,6 @@ import { ChatMessage } from '../types';
 import { createChatSession, sendMessageToGemini } from '../services/geminiService';
 import { marked } from 'marked';
 
-interface ChatInterfaceProps {
-    personaId: string;
-}
-
 const MessageContent: React.FC<{ content: string }> = ({ content }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +24,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
               <div class="flex items-center justify-between px-3 py-1.5 bg-[#252525] border-b border-[#404040]">
                 <span class="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">${language}</span>
                 <button class="copy-btn flex items-center gap-1.5 text-[10px] font-medium text-neutral-400 hover:text-white transition-colors" data-code="${encodedRaw}">
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                   <span>Copy</span>
                 </button>
               </div>
@@ -36,7 +32,8 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
             </div>
           `;
         };
-        return marked.parse(content, { renderer });
+        // Explicitly cast because marked types can be tricky with async options, though we use sync here.
+        return marked.parse(content, { renderer }) as string;
     } catch (e) {
         console.error("Markdown parsing failed", e);
         return content; 
@@ -54,7 +51,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
       try {
         await navigator.clipboard.writeText(rawCode);
         const originalContent = btn.innerHTML;
-        btn.innerHTML = `<svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg><span class="text-green-400">Copied</span>`;
+        btn.innerHTML = `<svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg><span class="text-green-400">Copied</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
       } catch (err) { console.error('Failed to copy', err); }
     };
@@ -62,7 +59,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     return () => container.removeEventListener('click', handleCopy);
   }, [htmlContent]);
 
-  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-white prose-a:underline hover:prose-a:text-neutral-300 prose-code:text-neutral-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
+  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-white prose-a:underline hover:prose-a:text-neutral-300 prose-code:text-neutral-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 
 const getPersonaIcon = (type: string) => {
@@ -75,7 +72,7 @@ const getPersonaIcon = (type: string) => {
     }
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
+const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const { personas, getChatHistory, saveChatMessage, clearChatHistory, config } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   
@@ -230,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto px-4 md:px-0 scroll-smooth" ref={scrollRef}>
                 <div className="max-w-3xl mx-auto py-6 space-y-6">
-                    {/* EMPTY STATE - RESTORED ICON AND DESCRIPTION */}
+                    {/* EMPTY STATE - FIXED: Shows Icon + Mission Description */}
                     {messages.length === 0 && !isConnecting && (
                         <div className="flex flex-col items-center justify-center py-20 opacity-40 select-none px-6 text-center">
                             <div className="w-16 h-16 rounded-2xl bg-[#2f2f2f] border border-[#404040] flex items-center justify-center mb-6 shadow-xl">
