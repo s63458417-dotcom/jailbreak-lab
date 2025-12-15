@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -58,9 +57,15 @@ const UserDashboard: React.FC = () => {
         <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl hover:border-[#404040] transition-colors p-5 flex flex-col h-full group">
           <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 rounded-lg bg-[#2b2b2b] flex items-center justify-center text-neutral-400">
-                  <span className="text-lg font-bold">{persona.name.charAt(0)}</span>
+                  {persona.avatarUrl ? (
+                      <img src={persona.avatarUrl} className="w-full h-full object-cover rounded-lg" />
+                  ) : (
+                      <span className="text-lg font-bold">{persona.name.charAt(0)}</span>
+                  )}
               </div>
-              {needsUnlock && <span className="bg-[#3b82f6]/10 text-brand-400 text-[10px] font-semibold px-2 py-1 rounded">PRO</span>}
+              {/* STATUS BADGES - CHANGED FROM GREEN TO NEUTRAL/BLUE */}
+              {!needsUnlock && isLocked && <span className="bg-[#2b2b2b] text-neutral-400 text-[10px] font-semibold px-2 py-1 rounded uppercase tracking-wider">UNLOCKED</span>}
+              {needsUnlock && <span className="bg-blue-900/20 text-blue-400 text-[10px] font-semibold px-2 py-1 rounded uppercase tracking-wider">LOCKED</span>}
           </div>
           
           <h3 className="text-lg font-semibold text-white mb-2">{persona.name}</h3>
@@ -80,7 +85,7 @@ const UserDashboard: React.FC = () => {
                     />
                     <button 
                         onClick={() => handleUnlock(persona.id, persona.accessKey)}
-                        className="w-full bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium py-2 rounded transition-colors"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 rounded transition-colors"
                     >
                         Unlock
                     </button>
@@ -110,19 +115,19 @@ const UserDashboard: React.FC = () => {
           <div className="flex gap-6 mb-8 border-b border-[#2e2e2e]">
               <button 
                   onClick={() => setActiveTab('open')}
-                  className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'open' ? 'border-brand-500 text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
+                  className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'open' ? 'border-blue-500 text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
               >
                   Standard Models ({freeTier.length})
               </button>
               <button 
                   onClick={() => setActiveTab('restricted')}
-                  className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'restricted' ? 'border-brand-500 text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
+                  className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'restricted' ? 'border-blue-500 text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
               >
                   Restricted ({paidTier.length})
               </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
               {activePersonas.length > 0 ? (
                   activePersonas.map(p => <PersonaCard key={p.id} persona={p} />)
               ) : (

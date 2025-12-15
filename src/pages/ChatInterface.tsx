@@ -101,7 +101,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 
 const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const { 
-    personas, getChatHistory, saveChatMessage, clearChatHistory, config,
+    personas, getChatHistory, saveChatMessage, clearChatHistory, 
     getValidKey, reportKeyFailure,
     getUsageCount, incrementUsage
   } = useStore();
@@ -117,7 +117,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -277,7 +276,9 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const currentUsage = (user && persona) ? getUsageCount(user.id, persona.id) : 0;
   const remaining = Math.max(0, dailyLimit - currentUsage);
   const isRateLimited = dailyLimit > 0 && remaining === 0;
-  const themeColor = persona.themeColor || '#22c55e'; // Default Green
+  
+  // DEFAULT COLOR CHANGED TO DEEPSEEK BLUE
+  const themeColor = persona.themeColor || '#3b82f6'; 
 
   return (
     <Layout title={persona.name} isChatMode={true}>
@@ -319,7 +320,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                         : 'border-transparent text-neutral-500 hover:text-white hover:bg-[#2f2f2f]'
                     }`}
                 >
-                     {confirmClear ? "CONFIRM WIPE" : "Clear Chat"}
+                     {confirmClear ? "CONFIRM RESET" : "Clear Context"}
                 </button>
             </div>
 
@@ -376,7 +377,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                         </div>
                     ))}
 
-                    {/* THINKING EFFECT - Restored */}
+                    {/* THINKING EFFECT */}
                     {isSending && (
                         <div className="flex w-full justify-start animate-in fade-in slide-in-from-bottom-2 px-2 md:px-0">
                              <div className="max-w-[80%] pl-0">
