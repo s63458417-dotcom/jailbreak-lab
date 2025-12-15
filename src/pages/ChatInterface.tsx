@@ -18,26 +18,21 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     const renderer = new marked.Renderer();
     
     // Custom Code Block Renderer - DeepSeek Style
-    // Signature fixed to (code, language) instead of object destructuring
+    // Correct Signature: (code, language)
     renderer.code = (code: string, language: string | undefined) => {
       const validLang = language || 'text';
-      // Encode for data attribute
       const encodedRaw = encodeURIComponent(code);
       
-      // Escape for display
       const escapedCode = code.replace(/&/g, '&amp;')
                               .replace(/</g, '&lt;')
                               .replace(/>/g, '&gt;');
 
       return `
-        <div class="not-prose my-5 rounded-xl overflow-hidden border border-[#2e2e2e] bg-[#0d0d0d] shadow-2xl group">
-          <div class="flex items-center justify-between px-4 py-2.5 bg-[#1a1a1a] border-b border-[#2e2e2e] select-none">
-            <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-[#3b3b3b]"></span>
-                <span class="text-xs font-mono font-bold text-neutral-400 lowercase">${validLang}</span>
-            </div>
+        <div class="not-prose my-4 rounded-lg overflow-hidden border border-[#2e2e2e] bg-[#0d0d0d] group">
+          <div class="flex items-center justify-between px-4 py-2 bg-[#1a1a1a] border-b border-[#2e2e2e]">
+            <span class="text-xs font-mono font-bold text-neutral-400 lowercase">${validLang}</span>
             <button 
-              class="copy-btn flex items-center gap-2 text-xs font-medium text-neutral-400 hover:text-white transition-all bg-[#252525] hover:bg-[#303030] px-2 py-1 rounded border border-[#333]"
+              class="copy-btn flex items-center gap-2 text-xs font-medium text-neutral-400 hover:text-white transition-all px-2 py-1 rounded"
               data-code="${encodedRaw}"
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -47,13 +42,12 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
             </button>
           </div>
           <div class="p-4 overflow-x-auto custom-scrollbar bg-[#0d0d0d]">
-             <pre class="m-0 p-0 bg-transparent text-sm font-mono leading-relaxed text-[#e0e0e0]" style="tab-size: 2;"><code class="language-${validLang} border-0 p-0 m-0 bg-transparent">${escapedCode}</code></pre>
+             <pre class="m-0 p-0 bg-transparent text-sm font-mono leading-relaxed text-[#e0e0e0]"><code class="language-${validLang}">${escapedCode}</code></pre>
           </div>
         </div>
       `;
     };
 
-    // Parse
     try {
         return marked.parse(content, { renderer }) as string;
     } catch (e) {
@@ -62,7 +56,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     }
   }, [content]);
 
-  // Handle Copy Button Clicks via Event Delegation
+  // Handle Copy Button Clicks
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -76,19 +70,9 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 
       try {
         await navigator.clipboard.writeText(rawCode);
-        
-        // Visual Feedback
         const originalContent = btn.innerHTML;
-        btn.innerHTML = `
-          <svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-          </svg>
-          <span class="text-green-400">Copied</span>
-        `;
-        
-        setTimeout(() => {
-          btn.innerHTML = originalContent;
-        }, 2000);
+        btn.innerHTML = `<span class="text-green-400">Copied</span>`;
+        setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
       } catch (err) {
         console.error('Failed to copy', err);
       }
@@ -168,18 +152,11 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
     const initGemini = async () => {
       try {
-        // --- KEY SELECTION LOGIC ---
         let selectedKey = persona.customApiKey;
-        
-        // If Vault is active, prioritize fetching from Pool
         if (persona.keyPoolId) {
              const vaultKey = getValidKey(persona.keyPoolId);
-             if (!vaultKey) {
-                 throw new Error("KEY VAULT EXHAUSTED: No active keys available in pool.");
-             }
-             selectedKey = vaultKey;
+             if (vaultKey) selectedKey = vaultKey;
         }
-
         if (mounted) setCurrentKey(selectedKey || null);
 
         const session = await createChatSession(
@@ -218,9 +195,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
           clearChatHistory(user!.id, personaId);
           setMessages([]);
           setChatSession(null); 
-          // Re-init session logic is handled by effect, but we need to trigger it.
-          // The effect depends on 'personaId', 'user'. If we clear history, we might need to manually reset session.
-          // Simplest way is to reload the session.
           window.location.reload(); 
       } else {
           setConfirmClear(true);
@@ -231,18 +205,17 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const handleSend = async () => {
     if (!inputValue.trim() || isSending || !persona || !user || !chatSession) return;
 
-    // --- RATE LIMIT CHECK (PERSISTENT) ---
     const dailyLimit = persona.rateLimit || 0;
     const currentUsage = getUsageCount(user.id, persona.id);
     
     if (dailyLimit > 0 && currentUsage >= dailyLimit) {
-        alert(`DAILY RATE LIMIT EXCEEDED.\nYou have used ${currentUsage}/${dailyLimit} messages today for this AI.\nResets at midnight local time.`);
+        alert(`DAILY RATE LIMIT EXCEEDED.\nYou have used ${currentUsage}/${dailyLimit} messages today.`);
         return;
     }
 
     const textPayload = inputValue.trim();
     setInputValue('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'; // Reset height
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'; 
     setConfirmClear(false);
     
     const userMsg: ChatMessage = {
@@ -254,10 +227,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
     setMessages(prev => [...prev, userMsg]);
     saveChatMessage(user.id, persona.id, userMsg);
-    
-    // Increment Usage IMMEDIATELY upon attempt
     incrementUsage(user.id, persona.id);
-
     setIsSending(true);
 
     try {
@@ -274,12 +244,9 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
       saveChatMessage(user.id, persona.id, modelMsg);
 
     } catch (error: any) {
-      // --- AUTO-ROTATION LOGIC ---
       const errStr = error.message || '';
       if (persona.keyPoolId && currentKey && (errStr.includes('401') || errStr.includes('403') || errStr.includes('429'))) {
-          console.warn(`Reporting key failure for pool ${persona.keyPoolId}`);
           reportKeyFailure(persona.keyPoolId, currentKey);
-          
           const errorMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'model',
@@ -287,10 +254,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
             timestamp: Date.now(),
           };
           setMessages(prev => [...prev, errorMsg]);
-          
           setChatSession(null);
-          // Trigger re-init via small hack or state update
-          // For now, user must refresh or re-enter chat to get new key
       } else {
           const errorMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
@@ -308,11 +272,12 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
   if (!persona) return <Layout title="Error" isChatMode={true}><div className="flex h-full items-center justify-center text-red-500 font-mono">[ERROR]: TARGET INVALID</div></Layout>;
 
-  // Usage Stats for UI
+  // Usage Stats
   const dailyLimit = persona.rateLimit || 0;
   const currentUsage = (user && persona) ? getUsageCount(user.id, persona.id) : 0;
   const remaining = Math.max(0, dailyLimit - currentUsage);
   const isRateLimited = dailyLimit > 0 && remaining === 0;
+  const themeColor = persona.themeColor || '#22c55e'; // Default Green
 
   return (
     <Layout title={persona.name} isChatMode={true}>
@@ -411,15 +376,26 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                         </div>
                     ))}
 
+                    {/* THINKING EFFECT - Restored */}
                     {isSending && (
-                        <div className="flex gap-4 w-full px-2 md:px-0 animate-pulse">
-                            <div className="flex-shrink-0 w-8 h-8 flex items-start justify-center mt-1">
-                                <div className="w-6 h-6 rounded-sm bg-[#2f2f2f]"></div>
-                            </div>
-                            <div className="flex-1 pt-2 space-y-2">
-                                <div className="h-4 bg-[#2f2f2f] rounded w-1/4"></div>
-                                <div className="h-4 bg-[#2f2f2f] rounded w-1/2"></div>
-                            </div>
+                        <div className="flex w-full justify-start animate-in fade-in slide-in-from-bottom-2 px-2 md:px-0">
+                             <div className="max-w-[80%] pl-0">
+                                <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: themeColor }}>
+                                    <div 
+                                        className="w-5 h-5 rounded flex items-center justify-center text-[10px] border"
+                                        style={{ 
+                                            backgroundColor: `${themeColor}20`, 
+                                            borderColor: `${themeColor}50` 
+                                        }}
+                                    >AI</div>
+                                    Thinking
+                                </div>
+                                <div className="flex gap-1.5 h-6 items-center pl-12">
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: themeColor }}></div>
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse delay-150" style={{ backgroundColor: themeColor }}></div>
+                                    <div className="w-1.5 h-1.5 rounded-full animate-pulse delay-300" style={{ backgroundColor: themeColor }}></div>
+                                </div>
+                             </div>
                         </div>
                     )}
                 </div>
@@ -466,9 +442,14 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                                 disabled={!inputValue.trim() || isSending || isRateLimited}
                                 className={`p-2 rounded-xl transition-all ${
                                     inputValue.trim() && !isSending && !isRateLimited
-                                    ? 'bg-white text-black hover:bg-neutral-200' 
+                                    ? 'text-white hover:brightness-110 shadow-lg' 
                                     : 'bg-[#404040] text-neutral-500 cursor-not-allowed'
                                 }`}
+                                style={
+                                    inputValue.trim() && !isSending && !isRateLimited
+                                    ? { backgroundColor: themeColor }
+                                    : {}
+                                }
                              >
                                 {isSending ? (
                                     <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -480,7 +461,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                     </div>
                 </div>
                 <p className="text-center text-[10px] text-neutral-600 mt-3 font-mono">
-                    AI can make mistakes. Verify sensitive info.
+                    Created by BT4
                 </p>
             </div>
       </div>
