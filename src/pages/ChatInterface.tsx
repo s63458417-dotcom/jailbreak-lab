@@ -18,7 +18,6 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     const renderer = new marked.Renderer();
     
     // Custom Code Block Renderer - DeepSeek Style
-    // Correct Signature: (code, language)
     renderer.code = (code: string, language: string | undefined) => {
       const validLang = language || 'text';
       const encodedRaw = encodeURIComponent(code);
@@ -115,6 +114,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [chatSession, setChatSession] = useState<any>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [currentKey, setCurrentKey] = useState<string | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0); // Forcing re-init
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -152,10 +152,16 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     const initGemini = async () => {
       try {
         let selectedKey = persona.customApiKey;
+        // Logic: If there is a Vault, use it.
         if (persona.keyPoolId) {
              const vaultKey = getValidKey(persona.keyPoolId);
-             if (vaultKey) selectedKey = vaultKey;
+             if (vaultKey) {
+                 selectedKey = vaultKey;
+             } else {
+                 throw new Error("KEY VAULT EXHAUSTED: No valid keys available.");
+             }
         }
+        
         if (mounted) setCurrentKey(selectedKey || null);
 
         const session = await createChatSession(
@@ -186,7 +192,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     };
     initGemini();
     return () => { mounted = false; };
-  }, [personaId, user, getChatHistory]);
+  }, [personaId, user, getChatHistory, retryTrigger]); // Add retryTrigger to dep array
 
 
   const handleClearChat = () => {
@@ -194,7 +200,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
           clearChatHistory(user!.id, personaId);
           setMessages([]);
           setChatSession(null); 
-          window.location.reload(); 
+          setRetryTrigger(p => p + 1); // Re-init
       } else {
           setConfirmClear(true);
           setTimeout(() => setConfirmClear(false), 3000);
@@ -244,16 +250,28 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
     } catch (error: any) {
       const errStr = error.message || '';
-      if (persona.keyPoolId && currentKey && (errStr.includes('401') || errStr.includes('403') || errStr.includes('429'))) {
+      console.error("Send Error:", errStr);
+
+      // --- KEY ROTATION LOGIC ---
+      // If we are using a Key Vault and get a 401, 403, or 429 error
+      if (persona.keyPoolId && currentKey && (errStr.includes('401') || errStr.includes('403') || errStr.includes('429') || errStr.includes('quota'))) {
+          
           reportKeyFailure(persona.keyPoolId, currentKey);
+          
           const errorMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'model',
-            text: `**SYSTEM ALERT:** API Key Failure Detected. Rotating keys... please retry.`,
+            text: `**SYSTEM ALERT:** API Key Failure (Quota/Invalid). Auto-rotating to fresh key...`,
             timestamp: Date.now(),
           };
           setMessages(prev => [...prev, errorMsg]);
+          
+          // Force Re-initialization with new key
           setChatSession(null);
+          setRetryTrigger(prev => prev + 1); 
+
+          // We don't save the error message to DB usually, but we display it.
+          // Optional: automatically retry the message? For now, ask user to retry.
       } else {
           const errorMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
@@ -271,13 +289,11 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
 
   if (!persona) return <Layout title="Error" isChatMode={true}><div className="flex h-full items-center justify-center text-red-500 font-mono">[ERROR]: TARGET INVALID</div></Layout>;
 
-  // Usage Stats
   const dailyLimit = persona.rateLimit || 0;
   const currentUsage = (user && persona) ? getUsageCount(user.id, persona.id) : 0;
   const remaining = Math.max(0, dailyLimit - currentUsage);
   const isRateLimited = dailyLimit > 0 && remaining === 0;
   
-  // DEFAULT COLOR CHANGED TO DEEPSEEK BLUE
   const themeColor = persona.themeColor || '#3b82f6'; 
 
   return (
@@ -327,7 +343,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto px-4 md:px-0 scroll-smooth" ref={scrollRef}>
                 <div className="max-w-3xl mx-auto py-6 space-y-8">
-                    {/* EMPTY STATE */}
                     {messages.length === 0 && !isConnecting && (
                         <div className="flex flex-col items-center justify-center py-20 opacity-40 select-none px-6 text-center animate-in fade-in zoom-in duration-500">
                             <div className="w-16 h-16 rounded-2xl bg-[#2f2f2f] border border-[#404040] flex items-center justify-center mb-6 shadow-xl">
@@ -342,7 +357,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                         </div>
                     )}
                     
-                    {/* LOADING STATE */}
                     {isConnecting && messages.length === 0 && (
                          <div className="h-full flex flex-col items-center justify-center space-y-4 pt-20">
                              <div className="flex gap-2">
@@ -377,7 +391,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                         </div>
                     ))}
 
-                    {/* THINKING EFFECT */}
                     {isSending && (
                         <div className="flex w-full justify-start animate-in fade-in slide-in-from-bottom-2 px-2 md:px-0">
                              <div className="max-w-[80%] pl-0">

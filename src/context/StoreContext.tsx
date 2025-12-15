@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
+import { db } from '../services/db';
 
-// Internal type for tracking usage
 interface UsageRecord {
   date: string; // YYYY-MM-DD
   count: number;
@@ -22,7 +22,6 @@ interface StoreContextType {
   updateConfig: (newConfig: SystemConfig) => void;
   allChats: Record<string, ChatSession>;
 
-  // Key Vault
   keyPools: KeyPool[];
   addKeyPool: (pool: KeyPool) => void;
   updateKeyPool: (pool: KeyPool) => void;
@@ -30,26 +29,15 @@ interface StoreContextType {
   reportKeyFailure: (poolId: string, key: string) => void;
   getValidKey: (poolId: string) => string | null;
 
-  // Rate Limiting
   getUsageCount: (userId: string, personaId: string) => number;
   incrementUsage: (userId: string, personaId: string) => void;
 
-  // Data Management
   exportData: () => string;
   importData: (jsonData: string) => boolean;
+  isReady: boolean;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
-
-const safeJSONParse = (key: string, fallback: any) => {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
-  } catch (e) {
-    console.warn(`Corrupted data in ${key}, resetting to default.`, e);
-    return fallback;
-  }
-};
 
 const DEFAULT_CONFIG: SystemConfig = {
   appName: 'Jailbreak Lab',
@@ -60,47 +48,65 @@ const DEFAULT_CONFIG: SystemConfig = {
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isReady, setIsReady] = useState(false);
+
   // --- STATE ---
-  const [personas, setPersonas] = useState<Persona[]>(() => 
-    safeJSONParse('pentest_personas', INITIAL_PERSONAS)
-  );
-  
-  const [chats, setChats] = useState<Record<string, ChatSession>>(() => 
-    safeJSONParse('pentest_chats', {})
-  );
-  
-  const [config, setConfig] = useState<SystemConfig>(() => 
-    safeJSONParse('pentest_config', DEFAULT_CONFIG)
-  );
-  
-  const [keyPools, setKeyPools] = useState<KeyPool[]>(() => 
-    safeJSONParse('pentest_key_pools', [])
-  );
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [chats, setChats] = useState<Record<string, ChatSession>>({});
+  const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
+  const [keyPools, setKeyPools] = useState<KeyPool[]>([]);
+  const [usageLogs, setUsageLogs] = useState<Record<string, UsageRecord>>({});
 
-  // Persistent Usage Logs
-  const [usageLogs, setUsageLogs] = useState<Record<string, UsageRecord>>(() => 
-    safeJSONParse('pentest_usage_logs', {})
-  );
+  // --- INITIAL LOAD ---
+  useEffect(() => {
+    const loadData = async () => {
+      // Parallel load for performance
+      const [
+        loadedPersonas, 
+        loadedChats, 
+        loadedConfig, 
+        loadedPools, 
+        loadedUsage
+      ] = await Promise.all([
+        db.get<Persona[]>('pentest_personas', []),
+        db.get<Record<string, ChatSession>>('pentest_chats', {}),
+        db.get<SystemConfig>('pentest_config', DEFAULT_CONFIG),
+        db.get<KeyPool[]>('pentest_key_pools', []),
+        db.get<Record<string, UsageRecord>>('pentest_usage_logs', {})
+      ]);
 
-  // --- PERSISTENCE HELPERS ---
-  const saveToStorage = (key: string, data: any) => {
-      try {
-          localStorage.setItem(key, JSON.stringify(data));
-      } catch (e: any) {
-          if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
-              console.error(`Storage Quota Exceeded while saving ${key}`);
-              alert("SYSTEM ALERT: Storage limit reached. Old chat history may be lost. Please backup your data in Admin Panel.");
-          } else {
-              console.error(`Failed to save ${key}`, e);
-          }
+      // If DB is completely empty (first run), populate with defaults
+      // We check if we loaded anything. If loadedPersonas is empty array, it might be first run OR user deleted all.
+      // To distinguish, we check a specific flag.
+      const initialized = await db.get<boolean>('app_initialized', false);
+      
+      if (!initialized) {
+          setPersonas(INITIAL_PERSONAS);
+          await db.set('pentest_personas', INITIAL_PERSONAS);
+          await db.set('app_initialized', true);
+      } else {
+          setPersonas(loadedPersonas);
       }
-  };
 
-  useEffect(() => { saveToStorage('pentest_personas', personas); }, [personas]);
-  useEffect(() => { saveToStorage('pentest_chats', chats); }, [chats]);
-  useEffect(() => { saveToStorage('pentest_config', config); document.title = config.appName; }, [config]);
-  useEffect(() => { saveToStorage('pentest_key_pools', keyPools); }, [keyPools]);
-  useEffect(() => { saveToStorage('pentest_usage_logs', usageLogs); }, [usageLogs]);
+      setChats(loadedChats);
+      setConfig(loadedConfig);
+      setKeyPools(loadedPools);
+      setUsageLogs(loadedUsage);
+      
+      document.title = loadedConfig.appName;
+      setIsReady(true);
+    };
+
+    loadData();
+  }, []);
+
+  // --- PERSISTENCE EFFECT WORKERS ---
+  // We use distinct effects to save only what changes
+  useEffect(() => { if(isReady) db.set('pentest_personas', personas); }, [personas, isReady]);
+  useEffect(() => { if(isReady) db.set('pentest_chats', chats); }, [chats, isReady]);
+  useEffect(() => { if(isReady) { db.set('pentest_config', config); document.title = config.appName; } }, [config, isReady]);
+  useEffect(() => { if(isReady) db.set('pentest_key_pools', keyPools); }, [keyPools, isReady]);
+  useEffect(() => { if(isReady) db.set('pentest_usage_logs', usageLogs); }, [usageLogs, isReady]);
 
   // --- ACTIONS ---
 
@@ -127,9 +133,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const existingSession = prev[key] || { personaId, messages: [] };
       let newMessages = [...existingSession.messages, message];
       
-      // STORAGE OPTIMIZATION: Keep only last 60 messages per session to prevent localStorage overflow
-      if (newMessages.length > 60) {
-          newMessages = newMessages.slice(newMessages.length - 60);
+      // Limit history to 100 messages for performance, can increase since we use IndexedDB now
+      if (newMessages.length > 100) {
+          newMessages = newMessages.slice(newMessages.length - 100);
       }
 
       return {
@@ -170,6 +176,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const reportKeyFailure = useCallback((poolId: string, key: string) => {
+    console.warn(`[Store] Reporting key failure in pool ${poolId}: ${key.substring(0,8)}...`);
     setKeyPools(prev => prev.map(pool => {
         if (pool.id !== poolId) return pool;
         return {
@@ -182,9 +189,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getValidKey = useCallback((poolId: string): string | null => {
       const pool = keyPools.find(p => p.id === poolId);
       if (!pool || pool.keys.length === 0) return null;
-      const validKeys = pool.keys.filter(k => !pool.deadKeys[k]);
+      
+      const now = Date.now();
+      const REVIVAL_TIME = 60 * 60 * 1000; // 1 Hour
+
+      // Check if any dead keys should be revived
+      const validKeys = pool.keys.filter(k => {
+          const deathTime = pool.deadKeys[k];
+          if (!deathTime) return true; // Alive
+          if (now - deathTime > REVIVAL_TIME) return true; // Revived
+          return false; // Still dead
+      });
+
       if (validKeys.length === 0) return null;
-      return validKeys[0];
+      
+      // Simple rotation: Pick random to distribute load
+      return validKeys[Math.floor(Math.random() * validKeys.length)];
   }, [keyPools]);
 
   // --- RATE LIMITING ---
@@ -225,7 +245,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           personas,
           config,
           keyPools,
-          // We exclude chats/usageLogs to keep backup small and focus on configuration
           timestamp: Date.now(),
           version: '1.0'
       };
@@ -245,6 +264,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
   }, []);
 
+  // Don't render app until DB is loaded
+  if (!isReady) {
+      return (
+          <div className="h-screen w-full bg-[#0a0a0a] flex flex-col items-center justify-center text-neutral-500 font-mono space-y-4">
+              <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-xs tracking-widest uppercase">Initializing Database...</div>
+          </div>
+      );
+  }
 
   return (
     <StoreContext.Provider value={{ 
@@ -253,7 +281,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       config, updateConfig, allChats: chats,
       keyPools, addKeyPool, updateKeyPool, deleteKeyPool, reportKeyFailure, getValidKey,
       getUsageCount, incrementUsage,
-      exportData, importData
+      exportData, importData, isReady
     }}>
       {children}
     </StoreContext.Provider>

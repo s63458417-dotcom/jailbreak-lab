@@ -27,18 +27,12 @@ export const createChatSession = async (
   }
 
   // 2. Determine Provider Strategy
-  // CRITICAL FIX: Explicitly check for googleapis.com to prevent "v1" or "beta" in the URL from triggering generic mode.
-  const isGoogle = (baseUrl && baseUrl.includes('googleapis.com')) || (!baseUrl && modelName.toLowerCase().includes('gemini'));
+  // Fix: Check for empty baseUrl to default to Google
+  const isGoogle = (!baseUrl) || (baseUrl && baseUrl.includes('googleapis.com')) || (!baseUrl && modelName.toLowerCase().includes('gemini'));
   
   let isGenericEndpoint = false;
   if (!isGoogle && baseUrl) {
-      isGenericEndpoint = (
-        baseUrl.includes('huggingface') || 
-        baseUrl.includes('deepseek') || 
-        baseUrl.includes('openai') || 
-        baseUrl.includes('v1') || // Only trigger v1 if NOT google
-        !modelName.toLowerCase().includes('gemini')
-      );
+      isGenericEndpoint = true;
   }
 
   // 3. Return session object
@@ -78,17 +72,13 @@ export const sendMessageToGemini = async (
             stream: false
         };
 
-        // Normalize Endpoint for Generic Providers
+        // Normalize Endpoint
         let endpoint = session.baseUrl;
-        // Only append chat/completions if the user didn't provide a full endpoint
-        if (!endpoint.endsWith('/chat/completions') && !endpoint.endsWith('/generate') && !endpoint.includes('/v1/chat')) {
-             // Basic heuristic: if it ends in /v1, add /chat/completions, otherwise just add /chat/completions
+        // Don't modify if user explicitly put full path
+        if (!endpoint.endsWith('/chat/completions') && !endpoint.endsWith('/generate')) {
              endpoint = endpoint.replace(/\/$/, ''); 
-             if (endpoint.endsWith('/v1')) {
-                 endpoint += '/chat/completions';
-             } else {
-                 endpoint += '/chat/completions';
-             }
+             // Auto-append if it looks like a base URL
+             endpoint += '/chat/completions';
         }
         
         let authHeader = '';
@@ -133,16 +123,13 @@ export const sendMessageToGemini = async (
   try {
       let endpoint = session.baseUrl;
 
-      // URL Construction Logic
-      // If the user provided a full URL (containing :generateContent), use it as is.
-      // Otherwise, assume it's a base URL and construct the path.
+      // Construct URL only if it looks like a base URL
       if (!endpoint.includes(':generateContent')) {
            const cleanBase = endpoint.replace(/\/+$/, '');
            endpoint = `${cleanBase}/models/${session.modelName}:generateContent`;
       }
 
       // Append API Key
-      // Handle cases where query params might already exist
       const separator = endpoint.includes('?') ? '&' : '?';
       endpoint = `${endpoint}${separator}key=${session.apiKey}`;
 
@@ -180,6 +167,7 @@ export const sendMessageToGemini = async (
           const errText = await response.text();
           if (response.status === 403) throw new Error("ACCESS_DENIED: API Key invalid or quota exceeded.");
           if (response.status === 404) throw new Error("404 NOT FOUND: Check model name or endpoint URL.");
+          if (response.status === 429) throw new Error("429 TOO_MANY_REQUESTS: Quota exceeded.");
           throw new Error(`Gemini API Error (${response.status}): ${errText}`);
       }
 
@@ -200,10 +188,9 @@ export const sendMessageToGemini = async (
 
   } catch (error: any) {
       console.error("Gemini Direct API Error:", error);
-      // Improve error message for fetch failures (CORS/Network)
       if (error.message === 'Failed to fetch') {
-          throw new Error("CONNECTION FAILED: Check your network or URL. (Note: Ensure the endpoint supports CORS if running in browser)");
+          throw new Error("CONNECTION FAILED: Check your network or URL.");
       }
-      throw new Error(`UPLINK FAILED: ${error.message}`);
+      throw error;
   }
 };
