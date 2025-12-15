@@ -27,18 +27,21 @@ export const createChatSession = async (
   }
 
   // 2. Determine Provider Strategy
-  // Fix: Check for empty baseUrl to default to Google
-  const isGoogle = (!baseUrl) || (baseUrl && baseUrl.includes('googleapis.com')) || (!baseUrl && modelName.toLowerCase().includes('gemini'));
+  // Logic: 
+  // - If baseUrl includes 'googleapis', it's Google.
+  // - If modelName starts with 'gemini' AND baseUrl is empty, it's Google.
+  // - Otherwise, default to Generic (OpenAI Compatible) to prevent sending GPT requests to Google.
   
-  let isGenericEndpoint = false;
-  if (!isGoogle && baseUrl) {
-      isGenericEndpoint = true;
-  }
+  const isGoogle = (baseUrl && baseUrl.includes('googleapis.com')) || 
+                   (!baseUrl && modelName.toLowerCase().startsWith('gemini')) ||
+                   (!baseUrl && modelName.toLowerCase().startsWith('veo'));
+  
+  const isGenericEndpoint = !isGoogle;
 
   // 3. Return session object
   return {
     modelName,
-    baseUrl: baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
+    baseUrl: baseUrl || (isGoogle ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1'),
     apiKey,
     systemInstruction,
     history: [...history], 
@@ -75,9 +78,11 @@ export const sendMessageToGemini = async (
         // Normalize Endpoint
         let endpoint = session.baseUrl;
         // Don't modify if user explicitly put full path
-        if (!endpoint.endsWith('/chat/completions') && !endpoint.endsWith('/generate')) {
+        if (!endpoint.endsWith('/chat/completions') && !endpoint.endsWith('/generate') && !endpoint.endsWith('/v1')) {
              endpoint = endpoint.replace(/\/$/, ''); 
              // Auto-append if it looks like a base URL
+             endpoint += '/chat/completions';
+        } else if (endpoint.endsWith('/v1')) {
              endpoint += '/chat/completions';
         }
         
