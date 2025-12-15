@@ -62,7 +62,8 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     return () => container.removeEventListener('click', handleCopy);
   }, [htmlContent]);
 
-  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-brand-400 prose-a:no-underline hover:prose-a:underline prose-code:text-brand-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
+  // Removed prose-code:text-brand-200 and prose-a:text-brand-400 to fix "blue text" issue
+  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-white prose-a:underline hover:prose-a:text-brand-300 prose-code:text-neutral-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
@@ -78,13 +79,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Initialize
   useEffect(() => {
       setMessages([]);
       setTimeout(() => inputRef.current?.focus(), 100);
   }, [personaId]);
 
-  // 2. Security Check
   useEffect(() => {
     if (!persona || !user) return;
     if (persona.isLocked && !isAdmin) {
@@ -96,13 +95,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     }
   }, [persona, user, isAdmin, getPersonaAccessTime]);
 
-  // 3. Auto-Scroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isSending]);
 
-  // --- Helpers ---
-  
   const getActiveKey = () => {
       if (persona?.keyPoolId) {
           const key = getValidKey(persona.keyPoolId);
@@ -204,7 +200,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     <Layout title={persona.name} isChatMode={true}>
       <div className="flex flex-col h-full bg-[#212121] relative w-full min-w-0">
             
-            {/* Header - Minimalist DeepSeek Style (No heavy borders) */}
+            {/* Header - Minimalist DeepSeek Style */}
             <div className="flex-shrink-0 h-14 flex items-center justify-between px-4 lg:px-6 z-20">
                 <div className="flex items-center gap-2">
                      <span className="text-neutral-400 text-sm">To:</span>
@@ -238,14 +234,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                     
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {/* DeepSeek Style: User is bubble, AI is text */}
                             {msg.role === 'user' ? (
                                 <div className="max-w-[85%] bg-[#2f2f2f] text-[#ececec] px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-relaxed">
                                     <MessageContent content={msg.text} />
                                 </div>
                             ) : (
                                 <div className="flex gap-4 max-w-full w-full">
-                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#2b2b2b] border border-[#404040] flex items-center justify-center text-xs font-bold text-brand-400 mt-0.5">
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#2b2b2b] border border-[#404040] flex items-center justify-center text-xs font-bold text-brand-500 mt-0.5">
                                         AI
                                     </div>
                                     <div className="flex-1 min-w-0 text-[#d4d4d4] text-[15px] leading-relaxed pt-1">
@@ -287,19 +282,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                                 handleSend();
                             }
                         }}
-                        placeholder="Message DeepSeek..."
+                        placeholder="Message..."
                         disabled={isSending}
                         rows={1}
                     />
                     
                     <div className="flex justify-between items-center mt-2 px-1">
-                        {/* Removed visual-only DeepThink/Search buttons as requested */}
+                        {/* LEFT: Removed Attachment/File Icon as requested */}
                         <div className="flex items-center gap-2">
-                             <button className="p-2 text-neutral-400 hover:text-white transition-colors rounded-full hover:bg-[#383838]" title="Attach">
-                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                             </button>
                         </div>
                         
+                        {/* RIGHT: Send Button */}
                         <div className="flex items-center gap-2">
                              <button 
                                 onClick={handleSend}

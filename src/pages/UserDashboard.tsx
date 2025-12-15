@@ -4,8 +4,6 @@ import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Persona } from '../types';
-import Button from '../components/Button';
-import Input from '../components/Input';
 
 const UserDashboard: React.FC = () => {
   const { personas } = useStore();
@@ -60,7 +58,6 @@ const UserDashboard: React.FC = () => {
         <div className="bg-[#1e1e1e] border border-[#2e2e2e] rounded-xl hover:border-[#404040] transition-colors p-5 flex flex-col h-full group">
           <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 rounded-lg bg-[#2b2b2b] flex items-center justify-center text-neutral-400">
-                  {/* Simple Icon placeholder */}
                   <span className="text-lg font-bold">{persona.name.charAt(0)}</span>
               </div>
               {needsUnlock && <span className="bg-[#3b82f6]/10 text-brand-400 text-[10px] font-semibold px-2 py-1 rounded">PRO</span>}

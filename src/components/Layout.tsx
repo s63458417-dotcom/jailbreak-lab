@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
-import Button from './Button';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -41,7 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
 
       {/* Sidebar - DeepSeek Style: Darker background, minimal borders */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-[70] w-[260px] bg-[#0f0f0f] flex flex-col flex-shrink-0 transition-transform duration-300
+        fixed lg:static inset-y-0 left-0 z-[70] w-[260px] bg-[#0f0f0f] flex flex-col flex-shrink-0 transition-transform duration-300 border-r border-[#1f1f1f]/50
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Top Section: Logo & Toggle */}
@@ -50,13 +49,12 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
                 {config.logoUrl ? (
                    <img src={config.logoUrl} alt="Logo" className="w-8 h-8 rounded-full" />
                 ) : (
-                   <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+                   <svg className="w-7 h-7 text-brand-500" viewBox="0 0 24 24" fill="currentColor">
                      <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"/>
                    </svg>
                 )}
                 <span className="font-semibold text-lg tracking-tight text-white">{config.appName}</span>
             </div>
-            {/* Sidebar Toggle (Visible only on mobile inside sidebar for closing) */}
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-neutral-400 hover:text-white">
                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
@@ -75,7 +73,6 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
 
         {/* Navigation List */}
         <nav className="flex-1 overflow-y-auto px-2 space-y-0.5 custom-scrollbar py-2">
-            {/* Standard Links */}
             {isAdmin && (
                 <button
                     onClick={() => handleNav('#/admin')}
@@ -88,9 +85,8 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
                 </button>
             )}
 
-            {/* History Section Header */}
             <div className="mt-6 mb-2 px-3 text-xs font-medium text-neutral-500">
-                Active Uplinks
+                Recent
             </div>
             
             {personas && personas.length > 0 ? personas.map(p => (
@@ -110,7 +106,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
             )}
         </nav>
 
-        {/* User Footer - DeepSeek style: Avatar left, Name, Settings icon right? */}
+        {/* User Footer */}
         <div className="p-3 bg-[#0f0f0f] border-t border-[#1f1f1f]">
             <div className="flex items-center gap-3 p-2 hover:bg-[#1f1f1f] rounded-lg cursor-pointer transition-colors" onClick={() => handleNav('#/profile')}>
                 <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-xs font-bold text-white">
@@ -137,7 +133,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
                  </button>
                  <span className="font-semibold text-white truncate">{config.appName}</span>
              </div>
-             <div className="w-6"></div> {/* Spacer for balance */}
+             <div className="w-6"></div>
         </header>
 
         <main className={`flex-1 overflow-hidden relative ${isChatMode ? 'p-0' : 'p-4 lg:p-8 overflow-y-auto'}`}>
