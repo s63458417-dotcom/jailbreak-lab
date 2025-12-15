@@ -18,20 +18,22 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     if (!content || typeof content !== 'string') return '';
     try {
         const renderer = new marked.Renderer();
-        renderer.code = ({ text, lang }) => {
-          const language = lang || 'text';
-          const escapedCode = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          const encodedRaw = encodeURIComponent(text);
+        
+        // FIX: Correct signature for marked renderer (code, lang) NOT ({text, lang})
+        renderer.code = (code, language) => {
+          const lang = language || 'text';
+          const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const encodedRaw = encodeURIComponent(code);
           return `
             <div class="code-block-wrapper relative group my-4 rounded-lg overflow-hidden border border-neutral-800 bg-neutral-900 shadow-sm">
               <div class="flex items-center justify-between px-4 py-2 bg-neutral-800/80 border-b border-neutral-800 backdrop-blur-sm">
-                <span class="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">${language}</span>
+                <span class="text-[10px] font-mono text-neutral-400 uppercase tracking-widest">${lang}</span>
                 <button class="copy-btn flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 hover:text-white transition-colors" data-code="${encodedRaw}">
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                   <span>Copy</span>
                 </button>
               </div>
-              <pre class="p-4 overflow-x-auto custom-scrollbar text-sm font-mono leading-relaxed text-brand-100 bg-transparent m-0"><code class="language-${language}">${escapedCode}</code></pre>
+              <pre class="p-4 overflow-x-auto custom-scrollbar text-sm font-mono leading-relaxed text-brand-100 bg-transparent m-0"><code class="language-${lang}">${escapedCode}</code></pre>
             </div>
           `;
         };
@@ -65,7 +67,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
-  const { personas, getValidKey, reportKeyFailure, saveChatMessage } = useStore();
+  const { personas, getValidKey, reportKeyFailure } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   const persona = personas.find(p => p.id === personaId);
   
@@ -77,9 +79,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Initialize - NO HISTORY LOADING
+  // 1. Initialize - NO HISTORY LOADING (Ephemeral)
   useEffect(() => {
-      // Clear messages on mount/persona change to ensure fresh start
       setMessages([]);
       setTimeout(() => inputRef.current?.focus(), 100);
   }, [personaId]);
@@ -132,7 +133,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
 
       try {
           // Create session with current messages (Context)
-          // We pass 'messages' here to maintain conversation context within this session
           const apiSession = await createChatSession(
               persona.model,
               persona.systemPrompt,
@@ -179,8 +179,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
     };
 
     setMessages(prev => [...prev, userMsg]);
-    // Note: We deliberately do NOT save to persistent storage anymore
-    // saveChatMessage(user.id, persona.id, userMsg); 
     
     setIsSending(true);
 
@@ -195,7 +193,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
       };
 
       setMessages(prev => [...prev, modelMsg]);
-      // saveChatMessage(user.id, persona.id, modelMsg);
 
     } catch (error: any) {
       const errorMsg: ChatMessage = {

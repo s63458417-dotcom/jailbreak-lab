@@ -520,7 +520,7 @@ const AdminPanel: React.FC = () => {
                             {editingId ? 'Commit Changes' : 'Initialize Agent'}
                         </Button>
                         {editingId && (
-                            <Button type="button" variant="ghost" onClick={resetForm} className="w-full md:w-auto">
+                            <Button type="button" variant="ghost" onClick={() => { setEditingPoolId(null); setPoolForm({ name: '', provider: 'custom', keys: [], deadKeys: {} }); setPoolKeysText(''); }}>
                                 Cancel
                             </Button>
                         )}

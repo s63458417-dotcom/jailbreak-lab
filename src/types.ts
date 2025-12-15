@@ -12,7 +12,7 @@ export interface User {
   unlockedPersonas: Record<string, number>; 
 }
 
-// New Interface for Token Boxes (Key Vaults)
+// Interface for Token Boxes (Key Vaults)
 export interface KeyPool {
   id: string;
   name: string;

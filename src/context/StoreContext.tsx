@@ -9,7 +9,7 @@ interface StoreContextType {
   updatePersona: (persona: Persona) => void;
   deletePersona: (id: string) => void;
   
-  // Chat History (Ephemeral now - kept in interface for compatibility but won't persist)
+  // Chat History is now in-memory only (ephemeral)
   getChatHistory: (userId: string, personaId: string) => ChatMessage[];
   saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => void;
   clearChatHistory: (userId: string, personaId: string) => void;
@@ -29,19 +29,12 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-// Robust local storage helper with type validation
-const getStorage = <T,>(key: string, fallback: T, validator?: (data: any) => boolean): T => {
+const safeJSONParse = (key: string, fallback: any) => {
   try {
     const saved = localStorage.getItem(key);
-    if (!saved) return fallback;
-    const parsed = JSON.parse(saved);
-    if (validator && !validator(parsed)) {
-      console.warn(`Data validation failed for ${key}, using fallback.`);
-      return fallback;
-    }
-    return parsed;
+    return saved ? JSON.parse(saved) : fallback;
   } catch (e) {
-    console.error(`Failed to load ${key}`, e);
+    console.warn(`Corrupted data in ${key}, resetting to default.`, e);
     return fallback;
   }
 };
@@ -55,20 +48,20 @@ const DEFAULT_CONFIG: SystemConfig = {
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load Personas
   const [personas, setPersonas] = useState<Persona[]>(() => 
-    getStorage('pentest_personas', INITIAL_PERSONAS, (data) => Array.isArray(data))
+    safeJSONParse('pentest_personas', INITIAL_PERSONAS)
   );
 
-  // In-Memory Chat State (No LocalStorage Persistence)
+  // In-Memory Chat State (No LocalStorage Persistence for privacy/reset)
   const [chats, setChats] = useState<Record<string, ChatSession>>({});
 
   // Load Config
   const [config, setConfig] = useState<SystemConfig>(() => 
-    getStorage('pentest_config', DEFAULT_CONFIG)
+    safeJSONParse('pentest_config', DEFAULT_CONFIG)
   );
 
   // Load Key Pools
   const [keyPools, setKeyPools] = useState<KeyPool[]>(() => 
-    getStorage('pentest_key_pools', [], (data) => Array.isArray(data))
+    safeJSONParse('pentest_key_pools', [])
   );
 
   // --- Persistence Effects ---
@@ -76,8 +69,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('pentest_personas', JSON.stringify(personas));
   }, [personas]);
 
-  // REMOVED: Chat history persistence effect
-  // useEffect(() => { localStorage.setItem('pentest_chats', ...); }, [chats]);
+  // NOTE: Chats are NOT saved to localStorage anymore.
 
   useEffect(() => {
     localStorage.setItem('pentest_config', JSON.stringify(config));
@@ -104,10 +96,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const getChatHistory = useCallback((userId: string, personaId: string) => {
-    // Return empty array to force fresh chat every time, 
-    // or return in-memory chats if we want history ONLY during the current session tab.
-    // User requested "Remove that chat history", implies ephemeral.
-    return chats[`${userId}_${personaId}`]?.messages || [];
+    const key = `${userId}_${personaId}`;
+    return chats[key]?.messages || [];
   }, [chats]);
 
   const saveChatMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
@@ -166,6 +156,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!pool || pool.keys.length === 0) return null;
 
       // Filter out keys that are dead
+      // Note: We don't filter them out of the array, we just check deadKeys map
       const validKeys = pool.keys.filter(k => !pool.deadKeys[k]);
       
       if (validKeys.length === 0) return null;

@@ -132,7 +132,7 @@ export const sendMessageToGemini = async (
     }
 
     // ============================================================
-    // STRATEGY B: GOOGLE GEMINI (REST)
+    // STRATEGY B: GOOGLE GEMINI (REST ONLY, NO SDK)
     // ============================================================
     else {
       let endpoint = '';
