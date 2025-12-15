@@ -32,7 +32,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
                   <span>Copy</span>
                 </button>
               </div>
-              <pre class="p-3 overflow-x-auto custom-scrollbar text-sm font-mono leading-relaxed text-[#d4d4d4] bg-transparent m-0"><code class="language-${lang}">${escapedCode}</code></pre>
+              <pre class="p-3 overflow-x-auto custom-scrollbar text-sm font-mono leading-relaxed text-[#ececec] bg-transparent m-0"><code class="language-${lang}">${escapedCode}</code></pre>
             </div>
           `;
         };
@@ -62,12 +62,12 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     return () => container.removeEventListener('click', handleCopy);
   }, [htmlContent]);
 
-  // Removed prose-code:text-brand-200 and prose-a:text-brand-400 to fix "blue text" issue
-  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-white prose-a:underline hover:prose-a:text-brand-300 prose-code:text-neutral-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
+  // Changed prose-code:text-brand-200 to prose-code:text-neutral-200 and prose-a:text-white to fix blue color
+  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:mb-2 prose-headings:font-semibold prose-headings:text-neutral-100 prose-headings:mt-4 prose-headings:mb-2 prose-a:text-white prose-a:underline hover:prose-a:text-neutral-300 prose-code:text-neutral-200 prose-code:font-mono prose-code:text-xs prose-code:bg-[#2a2a2a] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-strong:text-white prose-ul:list-disc prose-ul:pl-4 prose-ul:my-2 prose-ol:list-decimal prose-ol:pl-4 prose-ol:my-2 prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:rounded-none" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
 };
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
-  const { personas, getValidKey, reportKeyFailure } = useStore();
+  const { personas, getValidKey, reportKeyFailure, config } = useStore();
   const { user, getPersonaAccessTime, isAdmin } = useAuth();
   const persona = personas.find(p => p.id === personaId);
   
@@ -308,7 +308,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ personaId }) => {
                         </div>
                     </div>
                 </div>
-                <p className="text-center text-[10px] text-neutral-600 mt-2">AI-generated content may be inaccurate.</p>
+                {/* Footer Text updated from hardcoded BT4 to config value */}
+                <p className="text-center text-[10px] text-neutral-600 mt-2">{config.creatorName}</p>
             </div>
       </div>
     </Layout>
