@@ -32,7 +32,6 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
             </div>
           `;
         };
-        // Explicitly cast because marked types can be tricky with async options, though we use sync here.
         return marked.parse(content, { renderer }) as string;
     } catch (e) {
         console.error("Markdown parsing failed", e);
@@ -227,7 +226,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto px-4 md:px-0 scroll-smooth" ref={scrollRef}>
                 <div className="max-w-3xl mx-auto py-6 space-y-6">
-                    {/* EMPTY STATE - FIXED: Shows Icon + Mission Description */}
+                    {/* EMPTY STATE - RESTORED ICON AND DESCRIPTION */}
                     {messages.length === 0 && !isConnecting && (
                         <div className="flex flex-col items-center justify-center py-20 opacity-40 select-none px-6 text-center">
                             <div className="w-16 h-16 rounded-2xl bg-[#2f2f2f] border border-[#404040] flex items-center justify-center mb-6 shadow-xl">

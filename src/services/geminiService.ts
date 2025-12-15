@@ -111,18 +111,38 @@ export const sendMessageToGemini = async (
           stream: false
       };
 
+      // AUTH HEADER LOGIC: Robust handling for Bearer/Basic
+      let authHeader = '';
+      const cleanKey = session.apiKey.trim();
+      
+      if (cleanKey.toLowerCase().startsWith('basic ')) {
+          authHeader = cleanKey; // User provided full Basic auth string
+      } else if (cleanKey.toLowerCase().startsWith('bearer ')) {
+          authHeader = cleanKey; // User provided full Bearer string
+      } else {
+          authHeader = `Bearer ${cleanKey}`; // Default to Bearer
+      }
+
       const response = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.apiKey}`
+              'Accept': 'application/json',
+              'Authorization': authHeader
           },
           body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`External API Error (${response.status}): ${errText}`);
+          let errDetail = errText;
+          try {
+             const jsonErr = JSON.parse(errText);
+             if (jsonErr.error && typeof jsonErr.error === 'string') errDetail = jsonErr.error;
+             else if (jsonErr.error && jsonErr.error.message) errDetail = jsonErr.error.message;
+          } catch (e) {}
+          
+          throw new Error(`External API Error (${response.status}): ${errDetail}`);
       }
 
       const data = await response.json();
