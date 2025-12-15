@@ -60,7 +60,7 @@ const Layout: React.FC<LayoutProps> = ({ children, title, isChatMode = false }) 
             </button>
         </div>
 
-        {/* Main Action Button - Changed to "Jailbroken AIs" */}
+        {/* Main Action Button - Jailbroken AIs */}
         <div className="px-4 mb-2">
             <button
                 onClick={() => handleNav('#/dashboard')}
