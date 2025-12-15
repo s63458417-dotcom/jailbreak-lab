@@ -121,8 +121,19 @@ const AdminPanel: React.FC = () => {
       e.preventDefault();
       if (!poolForm.name) return alert("Pool name required");
       
-      const keys = poolKeysText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
-      if (keys.length === 0) return alert("At least one key is required");
+      // Intelligent key parsing:
+      // 1. Split by newlines OR commas (common separator)
+      // 2. Trim whitespace
+      // 3. Remove zero-width spaces (\u200B) and other invisible chars that break fetch
+      // 4. Remove non-printable characters
+      const keys = poolKeysText
+          .split(/[\n,]+/) 
+          .map(k => k.trim())
+          .map(k => k.replace(/[\u200B-\u200D\uFEFF]/g, '')) 
+          .map(k => k.replace(/[^\x20-\x7E]/g, '')) 
+          .filter(k => k.length > 0);
+
+      if (keys.length === 0) return alert("At least one valid key is required");
 
       const newPool: KeyPool = {
           id: editingPoolId || Date.now().toString(),

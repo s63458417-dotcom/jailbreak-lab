@@ -20,7 +20,13 @@ export const createChatSession = async (
   
   // 1. Resolve API Key
   const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
-  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
+  let apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
+
+  // SANITIZATION: Remove invisible unicode characters (zero-width spaces, etc) that cause fetch headers to crash
+  // We keep only printable ASCII characters (hex 20 to 7E)
+  if (apiKey) {
+      apiKey = apiKey.replace(/[^\x20-\x7E]/g, "").trim();
+  }
 
   if (!apiKey) {
     throw new Error("MISSING_API_KEY: No valid API key found. Please configure it in Admin settings or environment.");
@@ -57,6 +63,9 @@ export const sendMessageToGemini = async (
     throw new Error("SESSION_INVALID: Chat session is not initialized.");
   }
 
+  // Ensure key is clean before use in headers
+  const cleanKey = session.apiKey ? session.apiKey.replace(/[^\x20-\x7E]/g, "").trim() : "";
+
   // --- PATH A: GENERIC OPENAI-COMPATIBLE (HuggingFace/DeepSeek/OpenAI) ---
   if (session.isGeneric) {
       try {
@@ -87,7 +96,7 @@ export const sendMessageToGemini = async (
         }
         
         let authHeader = '';
-        const cleanKey = session.apiKey.trim();
+        
         if (cleanKey.toLowerCase().startsWith('basic ') || cleanKey.toLowerCase().startsWith('bearer ')) {
             authHeader = cleanKey;
         } else {
@@ -136,7 +145,7 @@ export const sendMessageToGemini = async (
 
       // Append API Key
       const separator = endpoint.includes('?') ? '&' : '?';
-      endpoint = `${endpoint}${separator}key=${session.apiKey}`;
+      endpoint = `${endpoint}${separator}key=${cleanKey}`;
 
       const contents = session.history
           .filter(msg => msg.role === 'user' || msg.role === 'model')
