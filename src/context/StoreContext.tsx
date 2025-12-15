@@ -33,6 +33,10 @@ interface StoreContextType {
   // Rate Limiting
   getUsageCount: (userId: string, personaId: string) => number;
   incrementUsage: (userId: string, personaId: string) => void;
+
+  // Data Management
+  exportData: () => string;
+  importData: (jsonData: string) => boolean;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -73,17 +77,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     safeJSONParse('pentest_key_pools', [])
   );
 
-  // Persistent Usage Logs: { "userId_personaId": { date: "2023-10-27", count: 10 } }
+  // Persistent Usage Logs
   const [usageLogs, setUsageLogs] = useState<Record<string, UsageRecord>>(() => 
     safeJSONParse('pentest_usage_logs', {})
   );
 
-  // --- PERSISTENCE ---
-  useEffect(() => { localStorage.setItem('pentest_personas', JSON.stringify(personas)); }, [personas]);
-  useEffect(() => { localStorage.setItem('pentest_chats', JSON.stringify(chats)); }, [chats]);
-  useEffect(() => { localStorage.setItem('pentest_config', JSON.stringify(config)); document.title = config.appName; }, [config]);
-  useEffect(() => { localStorage.setItem('pentest_key_pools', JSON.stringify(keyPools)); }, [keyPools]);
-  useEffect(() => { localStorage.setItem('pentest_usage_logs', JSON.stringify(usageLogs)); }, [usageLogs]);
+  // --- PERSISTENCE HELPERS ---
+  const saveToStorage = (key: string, data: any) => {
+      try {
+          localStorage.setItem(key, JSON.stringify(data));
+      } catch (e: any) {
+          if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+              console.error(`Storage Quota Exceeded while saving ${key}`);
+              alert("SYSTEM ALERT: Storage limit reached. Old chat history may be lost. Please backup your data in Admin Panel.");
+          } else {
+              console.error(`Failed to save ${key}`, e);
+          }
+      }
+  };
+
+  useEffect(() => { saveToStorage('pentest_personas', personas); }, [personas]);
+  useEffect(() => { saveToStorage('pentest_chats', chats); }, [chats]);
+  useEffect(() => { saveToStorage('pentest_config', config); document.title = config.appName; }, [config]);
+  useEffect(() => { saveToStorage('pentest_key_pools', keyPools); }, [keyPools]);
+  useEffect(() => { saveToStorage('pentest_usage_logs', usageLogs); }, [usageLogs]);
 
   // --- ACTIONS ---
 
@@ -108,11 +125,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const key = `${userId}_${personaId}`;
     setChats((prev) => {
       const existingSession = prev[key] || { personaId, messages: [] };
+      let newMessages = [...existingSession.messages, message];
+      
+      // STORAGE OPTIMIZATION: Keep only last 60 messages per session to prevent localStorage overflow
+      if (newMessages.length > 60) {
+          newMessages = newMessages.slice(newMessages.length - 60);
+      }
+
       return {
         ...prev,
         [key]: {
           ...existingSession,
-          messages: [...existingSession.messages, message],
+          messages: newMessages,
         },
       };
     });
@@ -195,13 +219,41 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
   }, []);
 
+  // --- DATA MANAGEMENT ---
+  const exportData = useCallback(() => {
+      const backup = {
+          personas,
+          config,
+          keyPools,
+          // We exclude chats/usageLogs to keep backup small and focus on configuration
+          timestamp: Date.now(),
+          version: '1.0'
+      };
+      return JSON.stringify(backup, null, 2);
+  }, [personas, config, keyPools]);
+
+  const importData = useCallback((jsonData: string) => {
+      try {
+          const data = JSON.parse(jsonData);
+          if (data.personas) setPersonas(data.personas);
+          if (data.config) setConfig(data.config);
+          if (data.keyPools) setKeyPools(data.keyPools);
+          return true;
+      } catch (e) {
+          console.error("Import failed", e);
+          return false;
+      }
+  }, []);
+
+
   return (
     <StoreContext.Provider value={{ 
       personas, addPersona, updatePersona, deletePersona,
       getChatHistory, saveChatMessage, clearChatHistory,
       config, updateConfig, allChats: chats,
       keyPools, addKeyPool, updateKeyPool, deleteKeyPool, reportKeyFailure, getValidKey,
-      getUsageCount, incrementUsage
+      getUsageCount, incrementUsage,
+      exportData, importData
     }}>
       {children}
     </StoreContext.Provider>

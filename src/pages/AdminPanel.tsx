@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -11,11 +10,12 @@ const AdminPanel: React.FC = () => {
   const { 
       personas, addPersona, updatePersona, deletePersona, 
       config, updateConfig, allChats,
-      keyPools, addKeyPool, updateKeyPool, deleteKeyPool
+      keyPools, addKeyPool, updateKeyPool, deleteKeyPool,
+      exportData, importData
   } = useStore();
   const { getAllUsers } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding' | 'data'>('ai');
 
   // --- AI Config Logic ---
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -152,7 +152,7 @@ const AdminPanel: React.FC = () => {
     { id: 'shield', label: 'Defense', desc: 'Blue Team / Protection', color: 'text-brand-500', bgColor: 'bg-brand-900/20', borderColor: 'border-brand-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
     { id: 'target', label: 'Offense', desc: 'Red Team / Attack', color: 'text-red-500', bgColor: 'bg-red-900/20', borderColor: 'border-red-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg> },
     { id: 'code', label: 'Development', desc: 'DevSecOps / Scripts', color: 'text-blue-500', bgColor: 'bg-blue-900/20', borderColor: 'border-blue-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> },
-    { id: 'chip', label: 'System', desc: 'Architecture / Hardware', color: 'text-purple-500', bgColor: 'bg-purple-900/20', borderColor: 'border-purple-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2-2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg> },
+    { id: 'chip', label: 'System', desc: 'Architecture / Hardware', color: 'text-purple-500', bgColor: 'bg-purple-900/20', borderColor: 'border-purple-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg> },
   ];
   const selectedAvatar = AVATAR_OPTIONS.find(a => a.id === formData.avatar) || AVATAR_OPTIONS[0];
 
@@ -162,6 +162,31 @@ const AdminPanel: React.FC = () => {
       e.preventDefault();
       updateConfig(brandingForm);
       alert("System configuration updated.");
+  };
+  
+  // --- Data Logic ---
+  const [importText, setImportText] = useState('');
+  const handleExport = () => {
+      const data = exportData();
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `jailbreak-lab-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+  };
+  const handleImport = () => {
+      if (!importText) return;
+      if (confirm("WARNING: This will overwrite your current configuration (Personas, Config, Keys). Chat history will be preserved. Continue?")) {
+          const success = importData(importText);
+          if (success) {
+              alert("System restored successfully.");
+              setImportText('');
+          } else {
+              alert("Import failed. Invalid JSON format.");
+          }
+      }
   };
 
   // --- Analytics / User Analysis Logic ---
@@ -223,11 +248,12 @@ const AdminPanel: React.FC = () => {
     <Layout title="System Configuration">
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
              <h2 className="text-2xl font-bold text-white tracking-tight">Admin Console</h2>
-             <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800">
-                 <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'ai' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Intelligence</button>
-                 <button onClick={() => setActiveTab('vault')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'vault' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Key Vaults</button>
-                 <button onClick={() => setActiveTab('users')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'users' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Operatives</button>
-                 <button onClick={() => setActiveTab('branding')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'branding' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Identity</button>
+             <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800 overflow-x-auto">
+                 <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'ai' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Intelligence</button>
+                 <button onClick={() => setActiveTab('vault')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'vault' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Key Vaults</button>
+                 <button onClick={() => setActiveTab('users')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Operatives</button>
+                 <button onClick={() => setActiveTab('branding')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'branding' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Identity</button>
+                 <button onClick={() => setActiveTab('data')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Backup</button>
              </div>
         </div>
 
@@ -797,6 +823,36 @@ const AdminPanel: React.FC = () => {
                  </div>
              </form>
         </div>
+      )}
+
+      {activeTab === 'data' && (
+          <div className="max-w-2xl bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6 animate-in fade-in">
+              <h3 className="text-lg font-semibold text-white mb-2">System Backup & Restore</h3>
+              <p className="text-sm text-neutral-400 mb-6">
+                  Export your configuration (Personas, Keys, Branding) to a JSON file to prevent data loss. 
+                  Chat logs are not included in backups to minimize file size.
+              </p>
+              
+              <div className="space-y-8">
+                  <div className="p-4 bg-neutral-950 rounded border border-neutral-800">
+                      <h4 className="text-sm font-bold text-brand-500 uppercase tracking-wider mb-2">Export Configuration</h4>
+                      <p className="text-xs text-neutral-500 mb-4">Download a JSON snapshot of your current system setup.</p>
+                      <Button onClick={handleExport} variant="secondary">Download Backup</Button>
+                  </div>
+
+                  <div className="p-4 bg-neutral-950 rounded border border-neutral-800">
+                      <h4 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Restore Configuration</h4>
+                      <p className="text-xs text-neutral-500 mb-4">Paste the contents of a backup file here to restore it. This will overwrite current settings.</p>
+                      <textarea 
+                          className="w-full bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 p-3 rounded h-32 mb-3 outline-none focus:border-brand-600"
+                          placeholder='Paste JSON data here...'
+                          value={importText}
+                          onChange={(e) => setImportText(e.target.value)}
+                      />
+                      <Button onClick={handleImport} variant="danger" disabled={!importText}>Restore System</Button>
+                  </div>
+              </div>
+          </div>
       )}
 
     </Layout>
