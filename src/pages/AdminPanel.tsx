@@ -121,11 +121,7 @@ const AdminPanel: React.FC = () => {
       e.preventDefault();
       if (!poolForm.name) return alert("Pool name required");
       
-      // Intelligent key parsing:
-      // 1. Split by newlines OR commas (common separator)
-      // 2. Trim whitespace
-      // 3. Remove zero-width spaces (\u200B) and other invisible chars that break fetch
-      // 4. Remove non-printable characters
+      // Intelligent key parsing
       const keys = poolKeysText
           .split(/[\n,]+/) 
           .map(k => k.trim())
@@ -422,14 +418,16 @@ const AdminPanel: React.FC = () => {
                         placeholder="Operational scope..."
                     />
                     <div className="w-full">
-                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">System Directives</label>
+                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">System Directives (Extended Capacity)</label>
                         <textarea 
-                            className="w-full bg-neutral-900 border border-neutral-800 focus:border-brand-600 focus:ring-1 focus:ring-brand-900/50 text-white rounded-md px-3.5 py-2.5 outline-none transition-all shadow-sm min-h-[150px] font-mono text-sm leading-relaxed"
+                            className="w-full bg-neutral-900 border border-neutral-800 focus:border-brand-600 focus:ring-1 focus:ring-brand-900/50 text-white rounded-md px-3.5 py-2.5 outline-none transition-all shadow-sm min-h-[600px] font-mono text-sm leading-relaxed resize-y"
                             value={formData.systemPrompt || ''}
                             onChange={e => setFormData({...formData, systemPrompt: e.target.value})}
                             required
+                            maxLength={20000000} // 20 Million Characters
                             placeholder="You are an expert in network security..."
                         />
+                         <p className="text-xs text-neutral-500 mt-1">Defines AI behavior. Capacity increased to 20M characters.</p>
                     </div>
                     <div className="p-5 bg-neutral-950/50 rounded-lg border border-neutral-800 grid grid-cols-1 gap-4">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-2">Technical Configuration</h4>
@@ -853,12 +851,13 @@ const AdminPanel: React.FC = () => {
 
                   <div className="p-4 bg-neutral-950 rounded border border-neutral-800">
                       <h4 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Restore Configuration</h4>
-                      <p className="text-xs text-neutral-500 mb-4">Paste the contents of a backup file here to restore it. This will overwrite current settings.</p>
+                      <p className="text-xs text-neutral-500 mb-4">Paste the contents of a backup file here. Capacity increased 80x for large backups.</p>
                       <textarea 
-                          className="w-full bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 p-3 rounded h-32 mb-3 outline-none focus:border-brand-600"
-                          placeholder='Paste JSON data here...'
+                          className="w-full bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 p-3 rounded min-h-[600px] mb-3 outline-none focus:border-brand-600 font-mono resize-y"
+                          placeholder='Paste huge JSON data here... (Extended Buffer)'
                           value={importText}
                           onChange={(e) => setImportText(e.target.value)}
+                          maxLength={100000000} // 100 Million Chars (~100MB)
                       />
                       <Button onClick={handleImport} variant="danger" disabled={!importText}>Restore System</Button>
                   </div>
