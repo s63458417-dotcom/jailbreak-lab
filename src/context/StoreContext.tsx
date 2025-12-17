@@ -6,14 +6,14 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 interface StoreContextType {
   personas: Persona[];
-  addPersona: (persona: Persona) => void;
-  updatePersona: (persona: Persona) => void;
-  deletePersona: (id: string) => void;
+  addPersona: (persona: Persona) => Promise<void>;
+  updatePersona: (persona: Persona) => Promise<void>;
+  deletePersona: (id: string) => Promise<void>;
   getChatHistory: (userId: string, personaId: string) => ChatMessage[];
-  saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => void;
-  clearChatHistory: (userId: string, personaId: string) => void;
+  saveChatMessage: (userId: string, personaId: string, message: ChatMessage) => Promise<void>;
+  clearChatHistory: (userId: string, personaId: string) => Promise<void>;
   config: SystemConfig;
-  updateConfig: (newConfig: SystemConfig) => void;
+  updateConfig: (newConfig: SystemConfig) => Promise<void>;
   allChats: Record<string, ChatSession>;
   
   // Vaults / Key Pools
@@ -46,6 +46,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
   const [keyPools, setKeyPools] = useState<KeyPool[]>([]);
 
+  // Load all global data from Supabase on Init
   useEffect(() => {
     const loadGlobalData = async () => {
       if (!isSupabaseConfigured()) {
@@ -55,10 +56,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       try {
-        const [pResp, cResp, kResp] = await Promise.all([
+        const [pResp, cResp, kResp, chResp] = await Promise.all([
           supabase.from('personas').select('*'),
           supabase.from('system_config').select('*').eq('id', 'global').single(),
-          supabase.from('key_pools').select('*')
+          supabase.from('key_pools').select('*'),
+          supabase.from('chats').select('*')
         ]);
 
         if (pResp.data) {
@@ -89,13 +91,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             });
         }
         
-        if (kResp.data) {
-            setKeyPools(kResp.data);
+        if (kResp.data) setKeyPools(kResp.data);
+
+        if (chResp.data) {
+            const chatMap: Record<string, ChatSession> = {};
+            chResp.data.forEach((c: any) => {
+                chatMap[c.id] = { personaId: c.persona_id, messages: c.messages || [] };
+            });
+            setChats(chatMap);
         }
 
         setIsReady(true);
       } catch (e) {
-        console.error("Sync Error:", e);
+        console.error("Global Sync Error:", e);
         setPersonas(INITIAL_PERSONAS);
         setIsReady(true);
       }
@@ -180,7 +188,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // --- VAULT LOGIC ---
+  // --- KEY VAULT / POOL LOGIC ---
   const addKeyPool = async (p: KeyPool) => {
     setKeyPools(prev => [...prev, p]);
     if (isSupabaseConfigured()) {
@@ -207,33 +215,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!pool || pool.keys.length === 0) return null;
       
       const now = Date.now();
-      // Filter out keys that failed in the last 1 hour
       const availableKeys = pool.keys.filter(k => {
           const failTime = pool.deadKeys[k] || 0;
-          return (now - failTime) > 3600000; 
+          return (now - failTime) > 3600000; // Key cooldown: 1 hour
       });
 
       if (availableKeys.length === 0) return null;
-      // Randomly pick one to balance load
       return availableKeys[Math.floor(Math.random() * availableKeys.length)];
   };
 
   const reportKeyFailure = async (poolId: string, key: string) => {
       setKeyPools(prev => prev.map(pool => {
           if (pool.id !== poolId) return pool;
-          const updated = {
-              ...pool,
-              deadKeys: { ...pool.deadKeys, [key]: Date.now() }
-          };
+          const updatedDeadKeys = { ...pool.deadKeys, [key]: Date.now() };
           if (isSupabaseConfigured()) {
-              supabase.from('key_pools').update({ dead_keys: updated.deadKeys }).eq('id', poolId);
+              supabase.from('key_pools').update({ dead_keys: updatedDeadDeadKeys }).eq('id', poolId);
           }
-          return updated;
+          return { ...pool, deadKeys: updatedDeadKeys };
       }));
   };
 
-  const getUsageCount = (userId: string, personaId: string) => 0; // Simplified for this restore
-  const incrementUsage = (userId: string, personaId: string) => {};
+  const getUsageCount = (userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}`;
+      const messages = chats[key]?.messages || [];
+      const today = new Date().setHours(0,0,0,0);
+      return messages.filter(m => m.role === 'user' && m.timestamp >= today).length;
+  };
+
+  const incrementUsage = () => {}; // Handled by message saving
 
   const exportData = () => JSON.stringify({ personas, config, keyPools }, null, 2);
   
@@ -241,7 +250,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
           const data = JSON.parse(json);
           if (data.config) await updateConfig(data.config);
-          // Potential logic for batch inserting personas/vaults here
           return true;
       } catch { return false; }
   };
