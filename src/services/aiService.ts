@@ -20,7 +20,7 @@ export const createChatSession = async (
   baseUrl?: string,
   customApiKey?: string
 ): Promise<AISession> => {
-  // Use custom URL or fallback to a blank string if not set
+  // Use custom URL or fallback to an empty string to force error if not set
   const finalBaseUrl = baseUrl || '';
   const finalApiKey = customApiKey || '';
 
@@ -41,12 +41,12 @@ export const sendMessageToAI = async (
   session: AISession,
   message: string
 ): Promise<string> => {
-  if (!session) throw new Error("SESSION_UNDEFINED");
-  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT_URL: Please set a Base URL for this persona in Admin.");
-  if (!session.apiKey) throw new Error("MISSING_AUTH_KEY: No API key provided for this uplink.");
+  if (!session) throw new Error("INTERNAL_SESSION_NULL");
+  if (!session.baseUrl) throw new Error("NO_ENDPOINT_DEFINED: Please configure the Base URL for this persona in the Admin Console.");
+  if (!session.apiKey) throw new Error("NO_AUTH_TOKEN: An API key is required to connect to this uplink.");
 
   let endpoint = session.baseUrl;
-  // Ensure endpoint hits the completions route
+  // Standard chat completions path normalization
   if (!endpoint.endsWith('/chat/completions')) {
       endpoint = endpoint.replace(/\/$/, '') + '/chat/completions';
   }
@@ -68,20 +68,21 @@ export const sendMessageToAI = async (
           })),
           { role: "user", content: message }
         ],
-        temperature: 0.7
+        temperature: 0.7,
+        stream: false
       })
     });
 
     if (!response.ok) {
         const raw = await response.text();
-        throw new Error(`Uplink Error (${response.status}): ${raw.substring(0, 150)}`);
+        throw new Error(`Uplink Error ${response.status}: ${raw.substring(0, 200)}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
     
-    if (!content) {
-        throw new Error("EMPTY_PAYLOAD: The remote provider returned no text content.");
+    if (typeof content !== 'string') {
+        throw new Error("MALFORMED_RESPONSE: The remote provider returned an invalid payload structure.");
     }
 
     return content;

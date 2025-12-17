@@ -36,9 +36,10 @@ const AdminPanel: React.FC = () => {
     systemPrompt: '',
     isLocked: false,
     accessKey: '',
-    model: 'custom-model',
+    model: 'custom-gpt-model',
     keyPoolId: '',
-    avatar: 'shield'
+    avatar: 'shield',
+    baseUrl: ''
   });
 
   const handleEdit = (p: Persona) => {
@@ -51,7 +52,7 @@ const AdminPanel: React.FC = () => {
     if (editingId) await updatePersona({ ...formData, id: editingId } as Persona);
     else await addPersona({ ...formData, id: Date.now().toString() } as Persona);
     setEditingId(null);
-    setFormData({ name: '', description: '', systemPrompt: '', model: 'custom-model', avatar: 'shield' });
+    setFormData({ name: '', description: '', systemPrompt: '', model: 'custom-gpt-model', avatar: 'shield', baseUrl: '' });
   };
 
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
@@ -100,7 +101,7 @@ const AdminPanel: React.FC = () => {
         <div className="xl:w-1/3">
             <div className="bg-[#1a1a1a] rounded-xl border border-neutral-800 overflow-hidden">
                 <div className="p-4 border-b border-neutral-800 font-bold text-neutral-400 text-xs tracking-widest uppercase">Persona List</div>
-                <div className="divide-y divide-neutral-800">
+                <div className="divide-y divide-neutral-800 max-h-[500px] overflow-y-auto custom-scrollbar">
                     {personas.map(p => (
                         <div key={p.id} className="p-4 flex items-center justify-between hover:bg-white/5">
                             <div className="truncate"><div className="text-sm font-bold text-white">{p.name}</div><div className="text-[10px] text-neutral-500 font-mono">{p.model}</div></div>
@@ -118,32 +119,32 @@ const AdminPanel: React.FC = () => {
             <div className="bg-[#1a1a1a] rounded-xl border border-neutral-800 p-6">
                <form onSubmit={handlePersonaSubmit} className="space-y-5">
                     <div className="grid grid-cols-2 gap-5">
-                         <Input label="Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                         <Input label="Model ID" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} required />
+                         <Input label="Persona Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="e.g. Offensive Counselor" />
+                         <Input label="Model Identifier" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} required placeholder="gpt-4o" />
                     </div>
-                    <Input label="Base URL (Endpoint)" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://api.openai.com/v1" />
+                    <Input label="Provider Endpoint URL" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://api.yourprovider.com/v1" />
                     <div>
-                        <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">System Directive</label>
-                        <textarea className="w-full bg-black border border-neutral-800 text-brand-100 p-4 rounded-lg min-h-[300px] font-mono text-xs focus:border-brand-500 outline-none" value={formData.systemPrompt || ''} onChange={e => setFormData({...formData, systemPrompt: e.target.value})} required />
+                        <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2 tracking-widest">System Instructions</label>
+                        <textarea className="w-full bg-black border border-neutral-800 text-neutral-200 p-4 rounded-lg min-h-[250px] font-mono text-xs focus:border-brand-500 outline-none" value={formData.systemPrompt || ''} onChange={e => setFormData({...formData, systemPrompt: e.target.value})} required placeholder="Enter persona identity and rules here..." />
                     </div>
                     <div className="grid grid-cols-2 gap-5 pt-4 border-t border-neutral-800">
                          <div className="space-y-4">
-                             <label className="block text-[10px] font-bold text-neutral-500 uppercase">Key Source</label>
+                             <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Auth Strategy</label>
                              <select className="w-full bg-black border border-neutral-800 text-white rounded-lg p-3 text-xs" value={formData.keyPoolId || ''} onChange={e => setFormData({...formData, keyPoolId: e.target.value})}>
-                                 <option value="">Direct API Key</option>
+                                 <option value="">Direct Key Entry</option>
                                  {keyPools.map(pool => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
                              </select>
-                             <Input label="Auth Key" type="password" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} />
+                             <Input label="Direct Auth Token" type="password" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} placeholder="sk-..." />
                          </div>
                          <div className="space-y-4">
                              <div className="flex items-center gap-3 p-3 bg-black rounded-lg border border-neutral-800">
                                 <input type="checkbox" checked={formData.isLocked} onChange={e => setFormData({...formData, isLocked: e.target.checked})} />
-                                <span className="text-xs text-white">Access Key Required</span>
+                                <span className="text-xs text-white uppercase font-bold tracking-widest">Access Passphrase Required</span>
                              </div>
-                             {formData.isLocked && <Input label="Passphrase" value={formData.accessKey || ''} onChange={e => setFormData({...formData, accessKey: e.target.value})} />}
+                             {formData.isLocked && <Input label="Required Passphrase" value={formData.accessKey || ''} onChange={e => setFormData({...formData, accessKey: e.target.value})} placeholder="secret-key" />}
                          </div>
                     </div>
-                    <Button type="submit" fullWidth>{editingId ? 'Update Persona' : 'Deploy Persona'}</Button>
+                    <Button type="submit" fullWidth>{editingId ? 'Save Changes' : 'Deploy Persona'}</Button>
                </form>
             </div>
         </div>
@@ -154,7 +155,7 @@ const AdminPanel: React.FC = () => {
           <div className="flex flex-col xl:flex-row gap-8">
               <div className="xl:w-1/3">
                   <div className="bg-[#1a1a1a] rounded-xl border border-neutral-800 overflow-hidden">
-                      <div className="p-4 border-b border-neutral-800 font-bold text-neutral-400 text-xs tracking-widest uppercase">Vaults</div>
+                      <div className="p-4 border-b border-neutral-800 font-bold text-neutral-400 text-xs tracking-widest uppercase">Key Vaults</div>
                       <div className="divide-y divide-neutral-800">
                           {keyPools.map(pool => (
                               <div key={pool.id} className="p-4 flex justify-between items-center hover:bg-white/5 cursor-pointer" onClick={() => handleEditPool(pool)}>
@@ -167,12 +168,12 @@ const AdminPanel: React.FC = () => {
               </div>
               <div className="xl:w-2/3 bg-[#1a1a1a] p-6 rounded-xl border border-neutral-800">
                   <form onSubmit={handlePoolSubmit} className="space-y-6">
-                      <Input label="Vault Name" value={poolForm.name || ''} onChange={e => setPoolForm({...poolForm, name: e.target.value})} required />
+                      <Input label="Vault Identifier" value={poolForm.name || ''} onChange={e => setPoolForm({...poolForm, name: e.target.value})} required />
                       <div>
-                          <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Key Dump</label>
+                          <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2 tracking-widest">Key Payload (One per line)</label>
                           <textarea className="w-full bg-black border border-neutral-800 text-neutral-300 p-4 rounded-lg min-h-[300px] font-mono text-xs outline-none" value={poolKeysText} onChange={e => setPoolKeysText(e.target.value)} required />
                       </div>
-                      <Button type="submit" fullWidth>Store in Vault</Button>
+                      <Button type="submit" fullWidth>Update Vault</Button>
                   </form>
               </div>
           </div>
@@ -180,23 +181,23 @@ const AdminPanel: React.FC = () => {
 
       {activeTab === 'db' && (
           <div className="max-w-xl bg-[#1a1a1a] p-8 rounded-xl border border-neutral-800">
-              <h3 className="text-xl font-bold text-white mb-6">Cloud Integration</h3>
+              <h3 className="text-xl font-bold text-white mb-6">Database Link</h3>
               <div className="space-y-6">
-                  <Input label="Supabase URL" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
-                  <Input label="Service Key" type="password" value={dbKey} onChange={e => setDbKey(e.target.value)} />
-                  <Button onClick={handleSaveDb} fullWidth>Update Connection</Button>
+                  <Input label="Endpoint URL" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
+                  <Input label="Secret Key" type="password" value={dbKey} onChange={e => setDbKey(e.target.value)} />
+                  <Button onClick={handleSaveDb} fullWidth>Synchronize</Button>
               </div>
           </div>
       )}
 
       {activeTab === 'data' && (
           <div className="max-w-xl bg-[#1a1a1a] p-8 rounded-xl border border-neutral-800">
-              <h3 className="text-xl font-bold text-white mb-6">System Data</h3>
+              <h3 className="text-xl font-bold text-white mb-6">Backup and Recovery</h3>
               <div className="space-y-4">
-                  <Button onClick={() => { const d = exportData(); const b = new Blob([d], {type:'application/json'}); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href=u; l.download='backup.json'; l.click(); }} fullWidth variant="secondary">Export All Configuration</Button>
+                  <Button onClick={() => { const d = exportData(); const b = new Blob([d], {type:'application/json'}); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href=u; l.download='backup.json'; l.click(); }} fullWidth variant="secondary">Download System Snapshot</Button>
                   <label className="block w-full py-3 px-4 bg-black border border-neutral-800 rounded-lg text-center cursor-pointer text-xs font-bold uppercase text-brand-500">
-                      Import Backup
-                      <input type="file" onChange={async (e) => { const f = e.target.files?.[0]; if(!f) return; const r = new FileReader(); r.onload = async (ev) => { const s = await importData(ev.target?.result as string); if(s) alert("Restored"); }; r.readAsText(f); }} className="hidden" />
+                      Upload Snapshot
+                      <input type="file" onChange={async (e) => { const f = e.target.files?.[0]; if(!f) return; const r = new FileReader(); r.onload = async (ev) => { const s = await importData(ev.target?.result as string); if(s) alert("Restored Successfully"); }; r.readAsText(f); }} className="hidden" />
                   </label>
               </div>
           </div>
