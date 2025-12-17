@@ -43,7 +43,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsReady(true);
       return;
     }
+
     try {
+      // Use standard fetch if Supabase client errors out to debug
       const [p, c, k, ch] = await Promise.all([
         supabase.from('personas').select('*'),
         supabase.from('system_config').select('*').eq('id', 'global').maybeSingle(),
@@ -51,21 +53,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('chats').select('*')
       ]);
       
+      // LOGIC FIX: Only show defaults if the cloud actually has ZERO records.
       if (p.data && p.data.length > 0) {
         setPersonas(p.data.map((x: any) => ({ 
-          id: x.id,
-          name: x.name,
-          description: x.description,
-          systemPrompt: x.system_prompt, 
-          isLocked: x.is_locked, 
-          accessKey: x.access_key, 
-          model: x.model, 
-          keyPoolId: x.key_pool_id,
-          avatar: x.avatar,
-          avatarUrl: x.avatar_url,
-          themeColor: x.theme_color,
-          rateLimit: x.rate_limit
+          id: x.id, name: x.name, description: x.description,
+          systemPrompt: x.system_prompt, isLocked: x.is_locked, 
+          accessKey: x.access_key, model: x.model, keyPoolId: x.key_pool_id,
+          avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
         })));
+      } else if (p.error) {
+        console.error("Supabase Persona Fetch Error:", p.error);
+        setPersonas(INITIAL_PERSONAS);
       } else {
         setPersonas(INITIAL_PERSONAS);
       }
@@ -77,11 +75,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       
       if (k.data) setKeyPools(k.data.map((x: any) => ({ 
-        id: x.id,
-        name: x.name,
-        provider: x.provider,
-        keys: x.keys || [],
-        deadKeys: x.dead_keys || {} 
+        id: x.id, name: x.name, provider: x.provider,
+        keys: x.keys || [], deadKeys: x.dead_keys || {} 
       })));
       
       if (ch.data) {
@@ -92,7 +87,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setChats(map);
       }
     } catch (err) {
-      console.error("Cloud Link Error:", err);
+      console.error("CRITICAL CLOUD SYNC ERROR:", err);
       setPersonas(INITIAL_PERSONAS);
     }
     setIsReady(true);
@@ -133,8 +128,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const saveChatMessage = async (uid: string, pid: string, msg: ChatMessage) => {
     const key = `${uid}_${pid}`;
-    const msgs = [...(chats[key]?.messages || []), msg];
+    const currentSession = chats[key] || { personaId: pid, messages: [] };
+    const msgs = [...currentSession.messages, msg];
+    
     setChats(prev => ({ ...prev, [key]: { personaId: pid, messages: msgs } }));
+    
     if (isSupabaseConfigured()) {
       await supabase.from('chats').upsert({ 
         id: key, user_id: uid, persona_id: pid, messages: msgs 
@@ -176,7 +174,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!pool || !pool.keys || pool.keys.length === 0) return null;
     const now = Date.now();
     const deadKeys = pool.deadKeys || {};
-    // 1-hour cooldown for failed keys
+    // Filter out keys marked as dead in the last hour
     const valid = pool.keys.filter(k => (now - (deadKeys[k] || 0)) > 3600000);
     return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
   };
@@ -206,39 +204,47 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const data = JSON.parse(json);
       
+      // 1. Update UI immediately
       if (data.personas) setPersonas(data.personas);
       if (data.config) setConfig(data.config);
       if (data.keyPools) setKeyPools(data.keyPools);
       
+      // 2. Force Sync to Supabase
       if (isSupabaseConfigured()) {
+        const syncTasks = [];
+
         if (data.personas) {
           for (const p of data.personas) {
-            await supabase.from('personas').upsert({ 
+            syncTasks.push(supabase.from('personas').upsert({ 
               id: p.id, name: p.name, description: p.description, 
               system_prompt: p.systemPrompt, is_locked: p.isLocked, 
               access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
               avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
-            });
+            }));
           }
         }
+        
         if (data.config) {
-          await supabase.from('system_config').upsert({ 
+          syncTasks.push(supabase.from('system_config').upsert({ 
             id: 'global', app_name: data.config.appName, 
             creator_name: data.config.creatorName, logo_url: data.config.logoUrl 
-          });
+          }));
         }
+
         if (data.keyPools) {
           for (const k of data.keyPools) {
-            await supabase.from('key_pools').upsert({
+            syncTasks.push(supabase.from('key_pools').upsert({
               id: k.id, name: k.name, provider: k.provider,
               keys: k.keys, dead_keys: k.deadKeys
-            });
+            }));
           }
         }
+
+        await Promise.all(syncTasks);
       }
       return true;
     } catch (err) { 
-      console.error("Restoration Failure:", err);
+      console.error("DATA RESTORATION FAILED:", err);
       return false; 
     }
   };

@@ -21,16 +21,15 @@ export const createChatSession = async (
   const envKey = process.env.API_KEY || '';
   let apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
-  if (apiKey) {
-    apiKey = apiKey.replace(/[^\x20-\x7E]/g, "").trim();
-  }
+  // Clean the key minimally - only whitespace
+  apiKey = apiKey ? apiKey.trim() : '';
 
   if (!apiKey) {
-    throw new Error("MISSING_API_KEY: No valid API key found.");
+    throw new Error("MISSING_API_KEY: Authentication token required.");
   }
 
-  const isGoogle = (baseUrl && baseUrl.includes('googleapis.com')) || 
-                   (!baseUrl && modelName.toLowerCase().startsWith('gemini'));
+  // LOGIC FIX: If a baseUrl is provided that isn't Google, it MUST be generic.
+  const isGeneric = !!(baseUrl && !baseUrl.includes('googleapis.com'));
   
   return {
     modelName,
@@ -38,7 +37,7 @@ export const createChatSession = async (
     apiKey,
     systemInstruction,
     history: [...history],
-    isGeneric: !isGoogle
+    isGeneric
   };
 };
 
@@ -49,7 +48,10 @@ export const sendMessageToGemini = async (
   if (!session) throw new Error("SESSION_INVALID");
 
   if (session.isGeneric) {
-    const endpoint = session.baseUrl || 'https://api.openai.com/v1/chat/completions';
+    // OpenAI Compatible Path (HuggingFace, DeepSeek, local LLMs)
+    const endpoint = session.baseUrl?.endsWith('/') 
+      ? `${session.baseUrl}chat/completions` 
+      : `${session.baseUrl}/chat/completions`;
     
     try {
       const response = await fetch(endpoint, {
@@ -62,27 +64,24 @@ export const sendMessageToGemini = async (
           model: session.modelName,
           messages: [
             { role: "system", content: session.systemInstruction },
-            ...session.history.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text })),
+            ...session.history.map(m => ({ 
+              role: m.role === 'model' ? 'assistant' : 'user', 
+              content: m.text 
+            })),
             { role: "user", content: message }
           ]
         })
       });
 
-      // VITAL FIX: Check content type and status before parsing
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`PROVIDER ERROR: ${response.status} ${response.statusText}. ${text.substring(0, 150)}`);
-      }
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("NETWORK ERROR: Received non-JSON response (likely 404 HTML). Check endpoint URL.");
+        const errBody = await response.text();
+        throw new Error(`API UPLINK REJECTED (${response.status}): ${errBody.substring(0, 100)}`);
       }
 
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || "No response content from provider.";
+      return data.choices?.[0]?.message?.content || "Provider returned empty buffer.";
     } catch (err: any) {
-      throw new Error(`UPLINK FAILED: ${err.message}`);
+      throw new Error(`PROVIDER CONNECTION FAILED: ${err.message}`);
     }
   }
 
@@ -100,15 +99,15 @@ export const sendMessageToGemini = async (
       contents: contents,
       config: {
         systemInstruction: session.systemInstruction,
-        temperature: 0.8,
+        temperature: 0.7,
       }
     });
 
     const reply = response.text;
-    if (!reply) throw new Error("Empty response from Gemini");
+    if (!reply) throw new Error("GEMINI_EMPTY_RESPONSE");
 
     return reply;
   } catch (err: any) {
-    throw new Error(`AI SDK ERROR: ${err.message}`);
+    throw new Error(`GEMINI UPLINK ERROR: ${err.message}`);
   }
 };

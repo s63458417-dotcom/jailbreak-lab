@@ -26,10 +26,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const restore = async () => {
       const saved = localStorage.getItem('pentest_session_id');
-      if (saved && isSupabaseConfigured()) {
+      if (saved) {
           if (saved === 'admin') {
              setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
-          } else {
+          } else if (isSupabaseConfigured()) {
              try {
                 const { data, error } = await supabase.from('users_db').select('*').eq('id', saved).maybeSingle();
                 if (data && !error) {
@@ -43,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     localStorage.removeItem('pentest_session_id');
                 }
              } catch (e) {
-                 console.error("Session restore failed", e);
+                 console.error("Auth Restore Failure:", e);
              }
           }
       }
@@ -62,12 +62,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!isSupabaseConfigured()) {
-        alert("Database not linked. Admin access only.");
+        alert("Database uplink not active. Only local admin access permitted.");
         return false;
     }
 
     const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).maybeSingle();
-    if (data && !error) {
+    
+    if (error) {
+        console.error("Login Database Error:", error);
+        if (error.code === '42P01') alert("CRITICAL: Database tables are missing. Go to Supabase SQL editor and run the schema.");
+        return false;
+    }
+
+    if (data) {
       const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
       setUser(u);
       localStorage.setItem('pentest_session_id', u.id);
@@ -79,27 +86,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (username: string, pass: string): Promise<boolean> => {
     if (!isSupabaseConfigured()) {
-        alert("Action restricted: Cloud Database not initialized.");
+        alert("Action Restricted: No cloud database connection.");
         return false;
     }
 
     const id = Date.now().toString();
     const { error } = await supabase.from('users_db').insert({
-        id, 
-        username, 
-        password: pass, 
-        role: Role.USER, 
-        unlocked_personas: {} 
+        id, username, password: pass, role: Role.USER, unlocked_personas: {} 
     });
     
     if (error) {
-        console.error("Supabase Auth Error:", error);
+        console.error("Registration Uplink Error:", error);
         if (error.code === '42P01') {
-           alert("CRITICAL: Database tables missing. Go to Admin -> Cloud Link and ensure SQL schema is applied.");
+           alert("UPLINK FAILURE: The table 'users_db' does not exist. Check SQL Editor.");
         } else if (error.code === '23505') {
-           alert("IDENT ERROR: This codename is already registered.");
+           alert("IDENTITY CLASH: Codename already registered.");
         } else {
-           alert(`UPLINK ERROR: ${error.message}`);
+           alert(`REGISTRATION ERROR: ${error.message}`);
         }
         return false;
     }
@@ -141,7 +144,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
       if (user?.role === Role.ADMIN && isSupabaseConfigured()) {
-          supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data }) => {
+          supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data, error }) => {
+              if (error) console.error("Admin Fetch Users Error:", error);
               if (data) setAllUsersCache(data.map(d => ({
                   id: d.id, username: d.username, role: d.role as Role, unlockedPersonas: d.unlocked_personas || {}
               })));
