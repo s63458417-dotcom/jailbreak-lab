@@ -1,4 +1,3 @@
-
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider } from './context/StoreContext';
@@ -19,8 +18,8 @@ interface ErrorBoundaryState {
 }
 
 // ErrorBoundary class to catch rendering errors.
-// Fix: Use standard constructor initialization for state and rely on Component generic for props inheritance.
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fix: Use React.Component to ensure TypeScript correctly identifies the class properties 'state' and 'props'.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {

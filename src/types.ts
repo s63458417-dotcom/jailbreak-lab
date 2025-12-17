@@ -12,13 +12,12 @@ export interface User {
   unlockedPersonas: Record<string, number>; 
 }
 
-// Interface for Token Boxes (Key Vaults)
 export interface KeyPool {
   id: string;
   name: string;
-  provider: 'google' | 'openai' | 'custom';
-  keys: string[]; // List of all keys
-  deadKeys: Record<string, number>; // Map of Key -> Timestamp when it failed
+  provider: 'standard' | 'custom';
+  keys: string[]; 
+  deadKeys: Record<string, number>; 
 }
 
 export interface Persona {
@@ -31,8 +30,8 @@ export interface Persona {
   accessDuration?: number; 
   model: string;
   baseUrl?: string; 
-  customApiKey?: string; // Legacy/Single override
-  keyPoolId?: string; // Link to a Key Vault
+  customApiKey?: string; 
+  keyPoolId?: string; 
   avatar: string; 
   avatarUrl?: string; 
   themeColor?: string; 
