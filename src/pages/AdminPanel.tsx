@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -6,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Persona, SystemConfig, ChatSession, KeyPool } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
-import { initSupabase, isSupabaseConfigured } from '../services/supabase';
+import { initSupabase } from '../services/supabase';
 
 const AdminPanel: React.FC = () => {
   const { 
@@ -32,7 +31,6 @@ const AdminPanel: React.FC = () => {
 
   // AI Personas
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Persona>>({
     name: '',
     description: '',
@@ -58,7 +56,7 @@ const AdminPanel: React.FC = () => {
     else await addPersona({ ...formData, id: Date.now().toString() } as Persona);
     
     setEditingId(null);
-    setFormData({ name: '', systemPrompt: '', model: 'gemini-3-flash-preview', avatar: 'shield' });
+    setFormData({ name: '', description: '', systemPrompt: '', model: 'gemini-3-flash-preview', avatar: 'shield' });
   };
 
   // Vaults
@@ -91,6 +89,32 @@ const AdminPanel: React.FC = () => {
       setEditingPoolId(pool.id);
       setPoolForm(pool);
       setPoolKeysText(pool.keys.join('\n'));
+  };
+
+  // Backup & Restore
+  const handleExport = () => {
+    const data = exportData();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `jailbreak-lab-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      const success = await importData(content);
+      if (success) alert("System restored and synced to cloud.");
+      else alert("Restore failed: Invalid file structure.");
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -145,7 +169,7 @@ const AdminPanel: React.FC = () => {
                          <Input label="Model ID" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} required />
                     </div>
                     <div>
-                        <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Master Directive (20M Character Capacity)</label>
+                        <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Master Directive</label>
                         <textarea 
                             className="w-full bg-black border border-neutral-800 text-brand-100 p-4 rounded-lg min-h-[400px] font-mono text-xs focus:border-brand-500 outline-none"
                             value={formData.systemPrompt || ''}
@@ -231,6 +255,58 @@ const AdminPanel: React.FC = () => {
                       </form>
                   </div>
               </div>
+          </div>
+      )}
+
+      {activeTab === 'data' && (
+          <div className="max-w-xl bg-[#1a1a1a] rounded-xl border border-neutral-800 p-8">
+              <h3 className="text-xl font-bold text-white mb-6">Maintenance & Backup</h3>
+              <div className="space-y-8">
+                  <div className="p-4 bg-brand-900/10 border border-brand-900/20 rounded-lg">
+                      <h4 className="text-brand-500 font-bold text-xs uppercase mb-2">System Export</h4>
+                      <p className="text-xs text-neutral-400 mb-4">Generate a full snapshot of personas, vaults, and configuration.</p>
+                      <Button onClick={handleExport} fullWidth variant="secondary" className="border-neutral-700">Download Backup (.JSON)</Button>
+                  </div>
+                  <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-lg">
+                      <h4 className="text-white font-bold text-xs uppercase mb-2">System Restore</h4>
+                      <p className="text-xs text-neutral-400 mb-4">Upload a previously exported JSON file to restore all settings and sync to cloud.</p>
+                      <label className="block w-full py-3 px-4 bg-black border border-neutral-800 rounded-lg text-center cursor-pointer hover:border-brand-500 transition-colors text-xs font-bold uppercase tracking-widest text-brand-500">
+                          Upload & Restore
+                          <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+                      </label>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {activeTab === 'branding' && (
+          <div className="max-w-xl bg-[#1a1a1a] rounded-xl border border-neutral-800 p-8">
+              <h3 className="text-xl font-bold text-white mb-6">Visual Identity</h3>
+              <form onSubmit={(e) => { e.preventDefault(); updateConfig(config); alert("Identity updated."); }} className="space-y-6">
+                  <Input label="Platform Title" value={config.appName} onChange={e => updateConfig({...config, appName: e.target.value})} />
+                  <Input label="Creator Signature" value={config.creatorName} onChange={e => updateConfig({...config, creatorName: e.target.value})} />
+                  <Input label="Logo URL" value={config.logoUrl} onChange={e => updateConfig({...config, logoUrl: e.target.value})} />
+                  <Button type="submit" fullWidth>Update Branding</Button>
+              </form>
+          </div>
+      )}
+
+      {activeTab === 'users' && (
+          <div className="bg-[#1a1a1a] rounded-xl border border-neutral-800 overflow-hidden">
+               <div className="p-4 border-b border-neutral-800 font-bold text-neutral-400 text-xs uppercase tracking-widest">Operator Roster</div>
+               <div className="divide-y divide-neutral-800">
+                   {getAllUsers().map(u => (
+                       <div key={u.id} className="p-4 flex items-center justify-between">
+                           <div>
+                               <div className="text-sm font-bold text-white">{u.username}</div>
+                               <div className="text-[10px] text-neutral-500 font-mono">{u.role} // {u.id}</div>
+                           </div>
+                           <div className="text-[10px] text-neutral-500 uppercase">
+                               Unlocked: {Object.keys(u.unlockedPersonas).length} AIs
+                           </div>
+                       </div>
+                   ))}
+               </div>
           </div>
       )}
     </Layout>

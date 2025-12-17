@@ -18,11 +18,14 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed: Explicitly inherit from Component and use a constructor to ensure this.props and this.state are correctly typed and recognized
+// Fixed: Explicitly inherit from Component and use constructor to ensure this.props and this.state are correctly typed and recognized by TypeScript in this environment.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = {
+      hasError: false,
+      error: null,
+    };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
