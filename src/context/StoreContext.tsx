@@ -46,19 +46,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const [p, c, k, ch] = await Promise.all([
         supabase.from('personas').select('*'),
-        supabase.from('system_config').select('*').eq('id', 'global').single(),
+        supabase.from('system_config').select('*').eq('id', 'global').maybeSingle(),
         supabase.from('key_pools').select('*'),
         supabase.from('chats').select('*')
       ]);
       
-      // If we got data back from the cloud, use it. Otherwise, use defaults.
       if (p.data && p.data.length > 0) {
         setPersonas(p.data.map((x: any) => ({ 
-          ...x, 
+          id: x.id,
+          name: x.name,
+          description: x.description,
           systemPrompt: x.system_prompt, 
           isLocked: x.is_locked, 
           accessKey: x.access_key, 
-          keyPoolId: x.key_pool_id 
+          model: x.model, 
+          keyPoolId: x.key_pool_id,
+          avatar: x.avatar,
+          avatarUrl: x.avatar_url,
+          themeColor: x.theme_color,
+          rateLimit: x.rate_limit
         })));
       } else {
         setPersonas(INITIAL_PERSONAS);
@@ -71,20 +77,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       
       if (k.data) setKeyPools(k.data.map((x: any) => ({ 
-        ...x, 
+        id: x.id,
+        name: x.name,
+        provider: x.provider,
+        keys: x.keys || [],
         deadKeys: x.dead_keys || {} 
       })));
       
       if (ch.data) {
         const map: any = {};
         ch.data.forEach((x: any) => { 
-          map[x.id] = { personaId: x.persona_id, messages: x.messages || [] }; 
+          map[`${x.user_id}_${x.persona_id}`] = { personaId: x.persona_id, messages: x.messages || [] }; 
         });
         setChats(map);
       }
     } catch (err) {
       console.error("Cloud Link Error:", err);
-      // Fallback on error
       setPersonas(INITIAL_PERSONAS);
     }
     setIsReady(true);
@@ -96,22 +104,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addPersona = async (p: Persona) => {
     setPersonas(prev => [...prev, p]);
-    if (isSupabaseConfigured()) await supabase.from('personas').upsert({ 
-      id: p.id, name: p.name, description: p.description, 
-      system_prompt: p.systemPrompt, is_locked: p.isLocked, 
-      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
-      avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
-    });
+    if (isSupabaseConfigured()) {
+      await supabase.from('personas').upsert({ 
+        id: p.id, name: p.name, description: p.description, 
+        system_prompt: p.systemPrompt, is_locked: p.isLocked, 
+        access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+        avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
+      });
+    }
   };
 
   const updatePersona = async (p: Persona) => {
     setPersonas(prev => prev.map(i => i.id === p.id ? p : i));
-    if (isSupabaseConfigured()) await supabase.from('personas').update({ 
-      name: p.name, description: p.description,
-      system_prompt: p.systemPrompt, is_locked: p.isLocked, 
-      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
-      avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
-    }).eq('id', p.id);
+    if (isSupabaseConfigured()) {
+      await supabase.from('personas').update({ 
+        name: p.name, description: p.description,
+        system_prompt: p.systemPrompt, is_locked: p.isLocked, 
+        access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+        avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
+      }).eq('id', p.id);
+    }
   };
 
   const deletePersona = async (id: string) => {
@@ -123,9 +135,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const key = `${uid}_${pid}`;
     const msgs = [...(chats[key]?.messages || []), msg];
     setChats(prev => ({ ...prev, [key]: { personaId: pid, messages: msgs } }));
-    if (isSupabaseConfigured()) await supabase.from('chats').upsert({ 
-      id: key, user_id: uid, persona_id: pid, messages: msgs 
-    });
+    if (isSupabaseConfigured()) {
+      await supabase.from('chats').upsert({ 
+        id: key, user_id: uid, persona_id: pid, messages: msgs 
+      });
+    }
   };
 
   const clearChatHistory = async (uid: string, pid: string) => {
@@ -136,16 +150,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addKeyPool = async (p: KeyPool) => {
     setKeyPools(prev => [...prev, p]);
-    if (isSupabaseConfigured()) await supabase.from('key_pools').insert({ 
-      id: p.id, name: p.name, provider: p.provider, keys: p.keys, dead_keys: p.deadKeys 
-    });
+    if (isSupabaseConfigured()) {
+      await supabase.from('key_pools').upsert({ 
+        id: p.id, name: p.name, provider: p.provider, keys: p.keys, dead_keys: p.deadKeys 
+      });
+    }
   };
 
   const updateKeyPool = async (p: KeyPool) => {
     setKeyPools(prev => prev.map(i => i.id === p.id ? p : i));
-    if (isSupabaseConfigured()) await supabase.from('key_pools').update({ 
-      name: p.name, provider: p.provider, keys: p.keys, dead_keys: p.deadKeys 
-    }).eq('id', p.id);
+    if (isSupabaseConfigured()) {
+      await supabase.from('key_pools').update({ 
+        name: p.name, provider: p.provider, keys: p.keys, dead_keys: p.deadKeys 
+      }).eq('id', p.id);
+    }
   };
 
   const deleteKeyPool = async (id: string) => {
@@ -153,20 +171,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isSupabaseConfigured()) await supabase.from('key_pools').delete().eq('id', id);
   };
 
-  const getValidKey = (pid: string) => {
-    const pool = keyPools.find(p => p.id === pid);
-    if (!pool || pool.keys.length === 0) return null;
+  const getValidKey = (poolId: string) => {
+    const pool = keyPools.find(p => p.id === poolId);
+    if (!pool || !pool.keys || pool.keys.length === 0) return null;
     const now = Date.now();
-    const valid = pool.keys.filter(k => (now - (pool.deadKeys[k] || 0)) > 3600000);
+    const deadKeys = pool.deadKeys || {};
+    // 1-hour cooldown for failed keys
+    const valid = pool.keys.filter(k => (now - (deadKeys[k] || 0)) > 3600000);
     return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
   };
 
-  const reportKeyFailure = async (pid: string, key: string) => {
+  const reportKeyFailure = async (poolId: string, key: string) => {
     setKeyPools(prev => prev.map(p => {
-      if (p.id !== pid) return p;
-      const updatedDeadKeys = { ...p.deadKeys, [key]: Date.now() };
+      if (p.id !== poolId) return p;
+      const updatedDeadKeys = { ...(p.deadKeys || {}), [key]: Date.now() };
       if (isSupabaseConfigured()) {
-        supabase.from('key_pools').update({ dead_keys: updatedDeadKeys }).eq('id', pid);
+        supabase.from('key_pools').update({ dead_keys: updatedDeadKeys }).eq('id', poolId).then();
       }
       return { ...p, deadKeys: updatedDeadKeys };
     }));
@@ -178,9 +198,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return msgs.filter(m => m.role === 'user' && m.timestamp >= today).length;
   };
 
-  const incrementUsage = (uid: string, pid: string) => {
-      // Usage is naturally tracked by saveChatMessage role: 'user'
-  };
+  const incrementUsage = (uid: string, pid: string) => {};
 
   const exportData = () => JSON.stringify({ personas, config, keyPools }, null, 2);
 
@@ -188,12 +206,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const data = JSON.parse(json);
       
-      // Update Local UI State
       if (data.personas) setPersonas(data.personas);
       if (data.config) setConfig(data.config);
       if (data.keyPools) setKeyPools(data.keyPools);
       
-      // SYNC TO CLOUD
       if (isSupabaseConfigured()) {
         if (data.personas) {
           for (const p of data.personas) {

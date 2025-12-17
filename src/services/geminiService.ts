@@ -49,7 +49,6 @@ export const sendMessageToGemini = async (
   if (!session) throw new Error("SESSION_INVALID");
 
   if (session.isGeneric) {
-    // OpenAI Compatible Path
     const endpoint = session.baseUrl || 'https://api.openai.com/v1/chat/completions';
     
     try {
@@ -69,20 +68,25 @@ export const sendMessageToGemini = async (
         })
       });
 
-      // FIX: Check if response is OK before parsing JSON to avoid "Unexpected token N" error
+      // VITAL FIX: Check content type and status before parsing
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`API UPLINK ERROR: ${response.status} ${response.statusText}. ${text.substring(0, 100)}`);
+        throw new Error(`PROVIDER ERROR: ${response.status} ${response.statusText}. ${text.substring(0, 150)}`);
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("NETWORK ERROR: Received non-JSON response (likely 404 HTML). Check endpoint URL.");
       }
 
       const data = await response.json();
       return data.choices?.[0]?.message?.content || "No response content from provider.";
     } catch (err: any) {
-      throw new Error(`CONNECTION FAILED: ${err.message}`);
+      throw new Error(`UPLINK FAILED: ${err.message}`);
     }
   }
 
-  // Google Gemini Path (Strict SDK Usage)
+  // Google Gemini Path
   try {
     const ai = new GoogleGenAI({ apiKey: session.apiKey });
     const contents = session.history.map(m => ({
@@ -105,6 +109,6 @@ export const sendMessageToGemini = async (
 
     return reply;
   } catch (err: any) {
-    throw new Error(`GEMINI SDK ERROR: ${err.message}`);
+    throw new Error(`AI SDK ERROR: ${err.message}`);
   }
 };

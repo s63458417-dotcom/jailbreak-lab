@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { ADMIN_USERNAME, DEFAULT_ADMIN_PASS } from '../constants';
-import { supabase } from '../services/supabase';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -26,18 +26,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const restore = async () => {
       const saved = localStorage.getItem('pentest_session_id');
-      if (saved) {
+      if (saved && isSupabaseConfigured()) {
           if (saved === 'admin') {
              setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
           } else {
-             const { data } = await supabase.from('users_db').select('*').eq('id', saved).single();
-             if (data) {
-                 setUser({
-                     id: data.id,
-                     username: data.username,
-                     role: data.role as Role,
-                     unlockedPersonas: data.unlocked_personas || {}
-                 });
+             try {
+                const { data, error } = await supabase.from('users_db').select('*').eq('id', saved).maybeSingle();
+                if (data && !error) {
+                    setUser({
+                        id: data.id,
+                        username: data.username,
+                        role: data.role as Role,
+                        unlockedPersonas: data.unlocked_personas || {}
+                    });
+                } else {
+                    localStorage.removeItem('pentest_session_id');
+                }
+             } catch (e) {
+                 console.error("Session restore failed", e);
              }
           }
       }
@@ -55,8 +61,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     }
 
-    const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).single();
-    if (data) {
+    if (!isSupabaseConfigured()) {
+        alert("Database not linked. Admin access only.");
+        return false;
+    }
+
+    const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).maybeSingle();
+    if (data && !error) {
       const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
       setUser(u);
       localStorage.setItem('pentest_session_id', u.id);
@@ -67,20 +78,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (username: string, pass: string): Promise<boolean> => {
+    if (!isSupabaseConfigured()) {
+        alert("Action restricted: Cloud Database not initialized.");
+        return false;
+    }
+
     const id = Date.now().toString();
     const { error } = await supabase.from('users_db').insert({
-        id, username, password: pass, role: Role.USER, unlocked_personas: {}
+        id, 
+        username, 
+        password: pass, 
+        role: Role.USER, 
+        unlocked_personas: {} 
     });
     
     if (error) {
         console.error("Supabase Auth Error:", error);
-        // If error is 404, the user likely hasn't run the SQL schema
         if (error.code === '42P01') {
-           alert("DATABASE ERROR: The 'users_db' table does not exist in your Supabase project. Please run the provided SQL schema in the Supabase SQL Editor.");
+           alert("CRITICAL: Database tables missing. Go to Admin -> Cloud Link and ensure SQL schema is applied.");
         } else if (error.code === '23505') {
-           alert("REGISTRATION FAILED: This codename is already registered in the system.");
+           alert("IDENT ERROR: This codename is already registered.");
         } else {
-           alert(`REGISTRATION FAILED: ${error.message}`);
+           alert(`UPLINK ERROR: ${error.message}`);
         }
         return false;
     }
@@ -98,16 +117,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user || user.id === 'admin') return;
     const next = { ...user.unlockedPersonas, [personaId]: Date.now() };
     setUser({ ...user, unlockedPersonas: next });
-    await supabase.from('users_db').update({ unlocked_personas: next }).eq('id', user.id);
+    if (isSupabaseConfigured()) {
+        await supabase.from('users_db').update({ unlocked_personas: next }).eq('id', user.id);
+    }
   };
 
   const updateProfile = async (newUsername: string, newPassword?: string) => {
       if (!user || user.id === 'admin') return true;
       const updates: any = { username: newUsername };
       if (newPassword) updates.password = newPassword;
+      
       const { error } = await supabase.from('users_db').update(updates).eq('id', user.id);
-      if (!error) setUser({ ...user, username: newUsername });
-      return !error;
+      if (!error) {
+          setUser({ ...user, username: newUsername });
+          return true;
+      }
+      return false;
   };
 
   const getAllUsers = () => {
@@ -115,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-      if (user?.role === Role.ADMIN) {
+      if (user?.role === Role.ADMIN && isSupabaseConfigured()) {
           supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data }) => {
               if (data) setAllUsersCache(data.map(d => ({
                   id: d.id, username: d.username, role: d.role as Role, unlockedPersonas: d.unlocked_personas || {}
@@ -138,6 +163,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) throw new Error('useAuth error');
   return context;
 };
