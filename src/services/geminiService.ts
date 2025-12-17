@@ -51,44 +51,60 @@ export const sendMessageToGemini = async (
   if (session.isGeneric) {
     // OpenAI Compatible Path
     const endpoint = session.baseUrl || 'https://api.openai.com/v1/chat/completions';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.apiKey}`
-      },
-      body: JSON.stringify({
-        model: session.modelName,
-        messages: [
-          { role: "system", content: session.systemInstruction },
-          ...session.history.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text })),
-          { role: "user", content: message }
-        ]
-      })
-    });
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "Error from generic provider";
+    
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.apiKey}`
+        },
+        body: JSON.stringify({
+          model: session.modelName,
+          messages: [
+            { role: "system", content: session.systemInstruction },
+            ...session.history.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text })),
+            { role: "user", content: message }
+          ]
+        })
+      });
+
+      // FIX: Check if response is OK before parsing JSON to avoid "Unexpected token N" error
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API UPLINK ERROR: ${response.status} ${response.statusText}. ${text.substring(0, 100)}`);
+      }
+
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || "No response content from provider.";
+    } catch (err: any) {
+      throw new Error(`CONNECTION FAILED: ${err.message}`);
+    }
   }
 
   // Google Gemini Path (Strict SDK Usage)
-  const ai = new GoogleGenAI({ apiKey: session.apiKey });
-  const contents = session.history.map(m => ({
-    role: m.role,
-    parts: [{ text: m.text }]
-  }));
-  contents.push({ role: 'user', parts: [{ text: message }] });
+  try {
+    const ai = new GoogleGenAI({ apiKey: session.apiKey });
+    const contents = session.history.map(m => ({
+      role: m.role,
+      parts: [{ text: m.text }]
+    }));
+    contents.push({ role: 'user', parts: [{ text: message }] });
 
-  const response = await ai.models.generateContent({
-    model: session.modelName,
-    contents: contents,
-    config: {
-      systemInstruction: session.systemInstruction,
-      temperature: 0.8,
-    }
-  });
+    const response = await ai.models.generateContent({
+      model: session.modelName,
+      contents: contents,
+      config: {
+        systemInstruction: session.systemInstruction,
+        temperature: 0.8,
+      }
+    });
 
-  const reply = response.text;
-  if (!reply) throw new Error("Empty response from Gemini");
+    const reply = response.text;
+    if (!reply) throw new Error("Empty response from Gemini");
 
-  return reply;
+    return reply;
+  } catch (err: any) {
+    throw new Error(`GEMINI SDK ERROR: ${err.message}`);
+  }
 };

@@ -18,15 +18,13 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed: Explicitly inherit from Component and use constructor to ensure this.props and this.state are correctly typed and recognized by TypeScript in this environment.
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
+// Fix: Use React.Component explicitly and property initialization to ensure TypeScript correctly recognizes state and props.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly initialize state as a class property to fix "Property 'state' does not exist" error
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -37,6 +35,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
+    // Accessing this.state is now safe as it's explicitly typed via inheritance and property declaration
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -55,6 +54,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
+    // Accessing this.props.children is now safe as ErrorBoundaryProps is correctly associated with the component
     return this.props.children;
   }
 }

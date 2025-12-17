@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
@@ -21,7 +22,7 @@ interface StoreContextType {
   getValidKey: (poolId: string) => string | null;
   reportKeyFailure: (poolId: string, key: string) => Promise<void>;
   getUsageCount: (userId: string, personaId: string) => number;
-  incrementUsage: (userId: string, personaId: string) => void; // Added for rate limiting logic
+  incrementUsage: (userId: string, personaId: string) => void; 
   exportData: () => string;
   importData: (jsonData: string) => Promise<boolean>;
   isReady: boolean;
@@ -50,13 +51,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('chats').select('*')
       ]);
       
-      if (p.data) setPersonas(p.data.map((x: any) => ({ 
-        ...x, 
-        systemPrompt: x.system_prompt, 
-        isLocked: x.is_locked, 
-        accessKey: x.access_key, 
-        keyPoolId: x.key_pool_id 
-      })));
+      // If we got data back from the cloud, use it. Otherwise, use defaults.
+      if (p.data && p.data.length > 0) {
+        setPersonas(p.data.map((x: any) => ({ 
+          ...x, 
+          systemPrompt: x.system_prompt, 
+          isLocked: x.is_locked, 
+          accessKey: x.access_key, 
+          keyPoolId: x.key_pool_id 
+        })));
+      } else {
+        setPersonas(INITIAL_PERSONAS);
+      }
       
       if (c.data) setConfig({ 
         appName: c.data.app_name, 
@@ -78,6 +84,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } catch (err) {
       console.error("Cloud Link Error:", err);
+      // Fallback on error
+      setPersonas(INITIAL_PERSONAS);
     }
     setIsReady(true);
   };
@@ -88,10 +96,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addPersona = async (p: Persona) => {
     setPersonas(prev => [...prev, p]);
-    if (isSupabaseConfigured()) await supabase.from('personas').insert({ 
+    if (isSupabaseConfigured()) await supabase.from('personas').upsert({ 
       id: p.id, name: p.name, description: p.description, 
       system_prompt: p.systemPrompt, is_locked: p.isLocked, 
-      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId 
+      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+      avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
     });
   };
 
@@ -100,7 +109,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isSupabaseConfigured()) await supabase.from('personas').update({ 
       name: p.name, description: p.description,
       system_prompt: p.systemPrompt, is_locked: p.isLocked, 
-      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId 
+      access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+      avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
     }).eq('id', p.id);
   };
 
@@ -147,7 +157,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const pool = keyPools.find(p => p.id === pid);
     if (!pool || pool.keys.length === 0) return null;
     const now = Date.now();
-    // Cooldown 1 hour
     const valid = pool.keys.filter(k => (now - (pool.deadKeys[k] || 0)) > 3600000);
     return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
   };
@@ -178,17 +187,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const importData = async (json: string) => {
     try {
       const data = JSON.parse(json);
+      
+      // Update Local UI State
       if (data.personas) setPersonas(data.personas);
       if (data.config) setConfig(data.config);
       if (data.keyPools) setKeyPools(data.keyPools);
       
+      // SYNC TO CLOUD
       if (isSupabaseConfigured()) {
         if (data.personas) {
           for (const p of data.personas) {
             await supabase.from('personas').upsert({ 
               id: p.id, name: p.name, description: p.description, 
               system_prompt: p.systemPrompt, is_locked: p.isLocked, 
-              access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId 
+              access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+              avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
             });
           }
         }

@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { ADMIN_USERNAME, DEFAULT_ADMIN_PASS } from '../constants';
@@ -26,14 +27,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const restore = async () => {
       const saved = localStorage.getItem('pentest_session_id');
       if (saved) {
-          const { data } = await supabase.from('users_db').select('*').eq('id', saved).single();
-          if (data) {
-              setUser({
-                  id: data.id,
-                  username: data.username,
-                  role: data.role as Role,
-                  unlockedPersonas: data.unlocked_personas || {}
-              });
+          if (saved === 'admin') {
+             setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
+          } else {
+             const { data } = await supabase.from('users_db').select('*').eq('id', saved).single();
+             if (data) {
+                 setUser({
+                     id: data.id,
+                     username: data.username,
+                     role: data.role as Role,
+                     unlockedPersonas: data.unlocked_personas || {}
+                 });
+             }
           }
       }
       setLoading(false);
@@ -50,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     }
 
-    const { data } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).single();
+    const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).single();
     if (data) {
       const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
       setUser(u);
@@ -66,8 +71,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { error } = await supabase.from('users_db').insert({
         id, username, password: pass, role: Role.USER, unlocked_personas: {}
     });
-    if (!error) return login(username, pass);
-    return false;
+    
+    if (error) {
+        console.error("Supabase Auth Error:", error);
+        // If error is 404, the user likely hasn't run the SQL schema
+        if (error.code === '42P01') {
+           alert("DATABASE ERROR: The 'users_db' table does not exist in your Supabase project. Please run the provided SQL schema in the Supabase SQL Editor.");
+        } else if (error.code === '23505') {
+           alert("REGISTRATION FAILED: This codename is already registered in the system.");
+        } else {
+           alert(`REGISTRATION FAILED: ${error.message}`);
+        }
+        return false;
+    }
+    
+    return login(username, pass);
   };
 
   const logout = () => {
@@ -93,8 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getAllUsers = () => {
-      // In a real app, we'd fetch this async. For this context, we'll try to sync or provide an effect.
-      // This is a limitation of the current UI requiring sync return.
       return allUsersCache;
   };
 
