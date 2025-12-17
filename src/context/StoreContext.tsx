@@ -38,8 +38,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [keyPools, setKeyPools] = useState<KeyPool[]>([]);
 
   const loadData = async () => {
+    // If Supabase is absolutely missing (rare with hardcoded fallback), use local defaults
     if (!isSupabaseConfigured()) {
-      console.warn("SUPABASE_OFFLINE: Reverting to local cache.");
       setPersonas(INITIAL_PERSONAS);
       setIsReady(true);
       return;
@@ -53,7 +53,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('chats').select('*')
       ]);
       
-      // LOGIC FIX: If Supabase returns success but 0 records, then and ONLY then use defaults.
       if (p.data && p.data.length > 0) {
         setPersonas(p.data.map((x: any) => ({ 
           id: x.id, name: x.name, description: x.description,
@@ -61,7 +60,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           accessKey: x.access_key, model: x.model, keyPoolId: x.key_pool_id,
           avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
         })));
-      } else if (!p.error) {
+      } else {
+        // Only use defaults if the cloud table is literally empty
         setPersonas(INITIAL_PERSONAS);
       }
       
@@ -84,11 +84,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setChats(map);
       }
     } catch (err) {
-      console.error("CLOUD_SYNC_ERROR", err);
-      // If we are actually configured but the network failed, don't clear personas yet
-      if (personas.length === 0) setPersonas(INITIAL_PERSONAS);
+      console.error("CLOUD_SYNC_ERROR: Falling back to memory.", err);
+      setPersonas(INITIAL_PERSONAS);
+    } finally {
+      setIsReady(true);
     }
-    setIsReady(true);
   };
 
   useEffect(() => { loadData(); }, []);

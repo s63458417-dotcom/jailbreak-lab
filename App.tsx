@@ -18,7 +18,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary: Added constructor to ensure props are correctly initialized for TypeScript and properly inherit from Component
+// ErrorBoundary class to catch rendering errors.
+// Fix: Use standard constructor initialization for state and rely on Component generic for props inheritance.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -37,7 +38,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
-    // Check error state using typed this.state
+    // Access state via this.state
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -56,9 +57,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Access children from props through destructuring now that the instance correctly recognizes props
-    const { children } = this.props;
-    return children;
+    // Access children from props
+    return this.props.children;
   }
 }
 
