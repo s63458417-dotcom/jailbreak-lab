@@ -1,10 +1,11 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Persona, ChatMessage, ChatSession, SystemConfig, KeyPool } from '../types';
 import { INITIAL_PERSONAS } from '../constants';
-import { db } from '../services/db';
+import { supabase } from '../services/supabase';
 
 interface UsageRecord {
-  date: string; // YYYY-MM-DD
+  date: string;
   count: number;
 }
 
@@ -33,7 +34,7 @@ interface StoreContextType {
   incrementUsage: (userId: string, personaId: string) => void;
 
   exportData: () => string;
-  importData: (jsonData: string) => boolean;
+  importData: (jsonData: string) => Promise<boolean>;
   isReady: boolean;
 }
 
@@ -49,227 +50,272 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
-
-  // --- STATE ---
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [chats, setChats] = useState<Record<string, ChatSession>>({});
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
   const [keyPools, setKeyPools] = useState<KeyPool[]>([]);
   const [usageLogs, setUsageLogs] = useState<Record<string, UsageRecord>>({});
 
-  // --- INITIAL LOAD ---
+  // --- INITIAL LOAD FROM SUPABASE ---
   useEffect(() => {
-    const loadData = async () => {
-      // Parallel load for performance
-      const [
-        loadedPersonas, 
-        loadedChats, 
-        loadedConfig, 
-        loadedPools, 
-        loadedUsage
-      ] = await Promise.all([
-        db.get<Persona[]>('pentest_personas', []),
-        db.get<Record<string, ChatSession>>('pentest_chats', {}),
-        db.get<SystemConfig>('pentest_config', DEFAULT_CONFIG),
-        db.get<KeyPool[]>('pentest_key_pools', []),
-        db.get<Record<string, UsageRecord>>('pentest_usage_logs', {})
-      ]);
+    const initData = async () => {
+      try {
+        const [
+          { data: pData },
+          { data: cData },
+          { data: kData },
+          { data: chatData }
+        ] = await Promise.all([
+          supabase.from('personas').select('*'),
+          supabase.from('system_config').select('*').eq('id', 'global').single(),
+          supabase.from('key_pools').select('*'),
+          supabase.from('chats').select('*')
+        ]);
 
-      // If DB is completely empty (first run), populate with defaults
-      // We check if we loaded anything. If loadedPersonas is empty array, it might be first run OR user deleted all.
-      // To distinguish, we check a specific flag.
-      const initialized = await db.get<boolean>('app_initialized', false);
-      
-      if (!initialized) {
+        // Handle Personas
+        if (pData && pData.length > 0) {
+          // Map snake_case from DB to camelCase for app
+          setPersonas(pData.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            systemPrompt: p.system_prompt,
+            isLocked: p.is_locked,
+            accessKey: p.access_key,
+            accessDuration: p.access_duration,
+            model: p.model,
+            baseUrl: p.base_url,
+            customApiKey: p.custom_api_key,
+            keyPoolId: p.key_pool_id,
+            avatar: p.avatar,
+            avatarUrl: p.avatar_url,
+            themeColor: p.theme_color,
+            rateLimit: p.rate_limit
+          })));
+        } else {
+          // First run: Seed DB with defaults
           setPersonas(INITIAL_PERSONAS);
-          await db.set('pentest_personas', INITIAL_PERSONAS);
-          await db.set('app_initialized', true);
-      } else {
-          setPersonas(loadedPersonas);
-      }
+          for (const p of INITIAL_PERSONAS) {
+              await supabase.from('personas').upsert({
+                  id: p.id,
+                  name: p.name,
+                  description: p.description,
+                  system_prompt: p.systemPrompt,
+                  is_locked: p.isLocked,
+                  access_key: p.accessKey,
+                  access_duration: p.accessDuration,
+                  model: p.model,
+                  avatar: p.avatar
+              });
+          }
+        }
 
-      setChats(loadedChats);
-      setConfig(loadedConfig);
-      setKeyPools(loadedPools);
-      setUsageLogs(loadedUsage);
-      
-      document.title = loadedConfig.appName;
-      setIsReady(true);
+        // Handle Config
+        if (cData) {
+          setConfig({
+            appName: cData.app_name,
+            creatorName: cData.creator_name,
+            logoUrl: cData.logo_url
+          });
+        }
+
+        // Handle Vaults
+        if (kData) setKeyPools(kData);
+
+        // Handle Chats
+        if (chatData) {
+            const chatMap: Record<string, ChatSession> = {};
+            chatData.forEach((c: any) => {
+                chatMap[c.id] = { personaId: c.persona_id, messages: c.messages };
+            });
+            setChats(chatMap);
+        }
+
+        setIsReady(true);
+      } catch (err) {
+        console.error("Supabase Load Error:", err);
+        // Fallback to defaults to prevent white screen
+        setPersonas(INITIAL_PERSONAS);
+        setIsReady(true);
+      }
     };
 
-    loadData();
+    initData();
   }, []);
-
-  // --- PERSISTENCE EFFECT WORKERS ---
-  // We use distinct effects to save only what changes
-  useEffect(() => { if(isReady) db.set('pentest_personas', personas); }, [personas, isReady]);
-  useEffect(() => { if(isReady) db.set('pentest_chats', chats); }, [chats, isReady]);
-  useEffect(() => { if(isReady) { db.set('pentest_config', config); document.title = config.appName; } }, [config, isReady]);
-  useEffect(() => { if(isReady) db.set('pentest_key_pools', keyPools); }, [keyPools, isReady]);
-  useEffect(() => { if(isReady) db.set('pentest_usage_logs', usageLogs); }, [usageLogs, isReady]);
 
   // --- ACTIONS ---
+  const addPersona = async (persona: Persona) => {
+    setPersonas(prev => [...prev, persona]);
+    await supabase.from('personas').insert({
+        id: persona.id,
+        name: persona.name,
+        description: persona.description,
+        system_prompt: persona.systemPrompt,
+        is_locked: persona.isLocked,
+        access_key: persona.accessKey,
+        access_duration: persona.accessDuration,
+        model: persona.model,
+        base_url: persona.baseUrl,
+        custom_api_key: persona.customApiKey,
+        key_pool_id: persona.keyPoolId,
+        avatar: persona.avatar,
+        avatar_url: persona.avatarUrl,
+        theme_color: persona.themeColor,
+        rate_limit: persona.rateLimit
+    });
+  };
 
-  const addPersona = useCallback((persona: Persona) => {
-    setPersonas((prev) => [...prev, persona]);
-  }, []);
+  const updatePersona = async (p: Persona) => {
+    setPersonas(prev => prev.map(item => item.id === p.id ? p : item));
+    // Fixed: Corrected snake_case property access on Persona object (should be camelCase)
+    await supabase.from('personas').update({
+        name: p.name,
+        description: p.description,
+        system_prompt: p.systemPrompt,
+        is_locked: p.isLocked,
+        access_key: p.accessKey,
+        access_duration: p.accessDuration,
+        model: p.model,
+        base_url: p.baseUrl,
+        custom_api_key: p.customApiKey,
+        key_pool_id: p.keyPoolId,
+        avatar: p.avatar,
+        avatar_url: p.avatarUrl,
+        theme_color: p.themeColor,
+        rate_limit: p.rateLimit
+    }).eq('id', p.id);
+  };
 
-  const updatePersona = useCallback((updatedPersona: Persona) => {
-    setPersonas((prev) => prev.map(p => p.id === updatedPersona.id ? updatedPersona : p));
-  }, []);
+  const deletePersona = async (id: string) => {
+    setPersonas(prev => prev.filter(p => p.id !== id));
+    await supabase.from('personas').delete().eq('id', id);
+  };
 
-  const deletePersona = useCallback((id: string) => {
-    setPersonas((prev) => prev.filter(p => p.id !== id));
-  }, []);
-
-  const getChatHistory = useCallback((userId: string, personaId: string) => {
+  const getChatHistory = (userId: string, personaId: string) => {
     const key = `${userId}_${personaId}`;
     return chats[key]?.messages || [];
-  }, [chats]);
+  };
 
-  const saveChatMessage = useCallback((userId: string, personaId: string, message: ChatMessage) => {
+  const saveChatMessage = async (userId: string, personaId: string, message: ChatMessage) => {
     const key = `${userId}_${personaId}`;
-    setChats((prev) => {
-      const existingSession = prev[key] || { personaId, messages: [] };
-      let newMessages = [...existingSession.messages, message];
-      
-      // Limit history to 100 messages for performance, can increase since we use IndexedDB now
-      if (newMessages.length > 100) {
-          newMessages = newMessages.slice(newMessages.length - 100);
-      }
+    const existing = chats[key]?.messages || [];
+    const newMessages = [...existing, message].slice(-100);
+    
+    setChats(prev => ({
+      ...prev,
+      [key]: { personaId, messages: newMessages }
+    }));
 
-      return {
-        ...prev,
-        [key]: {
-          ...existingSession,
-          messages: newMessages,
-        },
-      };
+    await supabase.from('chats').upsert({
+        id: key,
+        user_id: userId,
+        persona_id: personaId,
+        messages: newMessages
     });
-  }, []);
+  };
 
-  const clearChatHistory = useCallback((userId: string, personaId: string) => {
+  const clearChatHistory = async (userId: string, personaId: string) => {
     const key = `${userId}_${personaId}`;
-    setChats((prev) => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
+    setChats(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
     });
-  }, []);
+    await supabase.from('chats').delete().eq('id', key);
+  };
 
-  const updateConfig = useCallback((newConfig: SystemConfig) => {
-    setConfig(newConfig);
-  }, []);
+  const updateConfig = async (c: SystemConfig) => {
+    setConfig(c);
+    await supabase.from('system_config').upsert({
+        id: 'global',
+        app_name: c.appName,
+        creator_name: c.creatorName,
+        logo_url: c.logoUrl
+    });
+  };
 
-  // --- KEY VAULT ---
-
-  const addKeyPool = useCallback((pool: KeyPool) => {
+  // --- VAULTS ---
+  const addKeyPool = async (pool: KeyPool) => {
     setKeyPools(prev => [...prev, pool]);
-  }, []);
+    await supabase.from('key_pools').insert(pool);
+  };
 
-  const updateKeyPool = useCallback((pool: KeyPool) => {
+  const updateKeyPool = async (pool: KeyPool) => {
     setKeyPools(prev => prev.map(p => p.id === pool.id ? pool : p));
-  }, []);
+    await supabase.from('key_pools').update(pool).eq('id', pool.id);
+  };
 
-  const deleteKeyPool = useCallback((id: string) => {
+  const deleteKeyPool = async (id: string) => {
     setKeyPools(prev => prev.filter(p => p.id !== id));
-  }, []);
+    await supabase.from('key_pools').delete().eq('id', id);
+  };
 
-  const reportKeyFailure = useCallback((poolId: string, key: string) => {
-    console.warn(`[Store] Reporting key failure in pool ${poolId}: ${key.substring(0,8)}...`);
+  const reportKeyFailure = (poolId: string, key: string) => {
     setKeyPools(prev => prev.map(pool => {
         if (pool.id !== poolId) return pool;
-        return {
+        const updated = {
             ...pool,
             deadKeys: { ...pool.deadKeys, [key]: Date.now() }
         };
+        supabase.from('key_pools').update({ dead_keys: updated.deadKeys }).eq('id', poolId);
+        return updated;
     }));
-  }, []);
+  };
 
-  const getValidKey = useCallback((poolId: string): string | null => {
+  const getValidKey = (poolId: string): string | null => {
       const pool = keyPools.find(p => p.id === poolId);
       if (!pool || pool.keys.length === 0) return null;
-      
-      const now = Date.now();
-      const REVIVAL_TIME = 60 * 60 * 1000; // 1 Hour
-
-      // Check if any dead keys should be revived
-      const validKeys = pool.keys.filter(k => {
-          const deathTime = pool.deadKeys[k];
-          if (!deathTime) return true; // Alive
-          if (now - deathTime > REVIVAL_TIME) return true; // Revived
-          return false; // Still dead
-      });
-
+      const validKeys = pool.keys.filter(k => !pool.deadKeys[k] || (Date.now() - pool.deadKeys[k] > 3600000));
       if (validKeys.length === 0) return null;
-      
-      // Simple rotation: Pick random to distribute load
       return validKeys[Math.floor(Math.random() * validKeys.length)];
-  }, [keyPools]);
+  };
 
-  // --- RATE LIMITING ---
-
-  const getUsageCount = useCallback((userId: string, personaId: string) => {
-      const key = `${userId}_${personaId}`;
+  const getUsageCount = (userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}_usage`;
       const record = usageLogs[key];
-      const today = getTodayString();
-      
-      if (!record || record.date !== today) {
-          return 0;
-      }
-      return record.count;
-  }, [usageLogs]);
+      return (record && record.date === getTodayString()) ? record.count : 0;
+  };
 
-  const incrementUsage = useCallback((userId: string, personaId: string) => {
-      const key = `${userId}_${personaId}`;
+  const incrementUsage = (userId: string, personaId: string) => {
+      const key = `${userId}_${personaId}_usage`;
       const today = getTodayString();
-      
       setUsageLogs(prev => {
           const current = prev[key];
-          let newCount = 1;
-          
-          if (current && current.date === today) {
-              newCount = current.count + 1;
-          }
-          
-          return {
-              ...prev,
-              [key]: { date: today, count: newCount }
-          };
+          const newCount = (current && current.date === today) ? current.count + 1 : 1;
+          return { ...prev, [key]: { date: today, count: newCount } };
       });
-  }, []);
+  };
 
-  // --- DATA MANAGEMENT ---
-  const exportData = useCallback(() => {
-      const backup = {
-          personas,
-          config,
-          keyPools,
-          timestamp: Date.now(),
-          version: '1.0'
-      };
-      return JSON.stringify(backup, null, 2);
-  }, [personas, config, keyPools]);
+  const exportData = () => {
+      return JSON.stringify({ personas, config, keyPools }, null, 2);
+  };
 
-  const importData = useCallback((jsonData: string) => {
+  const importData = async (jsonData: string) => {
       try {
           const data = JSON.parse(jsonData);
-          if (data.personas) setPersonas(data.personas);
-          if (data.config) setConfig(data.config);
-          if (data.keyPools) setKeyPools(data.keyPools);
+          if (data.personas) {
+              setPersonas(data.personas);
+              for (const p of data.personas) {
+                  // Fixed: Use correct camelCase property names for the Persona object (accessDuration)
+                  await supabase.from('personas').upsert({
+                      id: p.id, name: p.name, description: p.description, system_prompt: p.systemPrompt,
+                      is_locked: p.isLocked, access_key: p.accessKey, access_duration: p.accessDuration,
+                      model: p.model, avatar: p.avatar
+                  });
+              }
+          }
+          if (data.config) await updateConfig(data.config);
           return true;
       } catch (e) {
-          console.error("Import failed", e);
           return false;
       }
-  }, []);
+  };
 
-  // Don't render app until DB is loaded
   if (!isReady) {
       return (
           <div className="h-screen w-full bg-[#0a0a0a] flex flex-col items-center justify-center text-neutral-500 font-mono space-y-4">
               <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-              <div className="text-xs tracking-widest uppercase">Initializing Database...</div>
+              <div className="text-xs tracking-widest uppercase">Syncing with Uplink...</div>
           </div>
       );
   }

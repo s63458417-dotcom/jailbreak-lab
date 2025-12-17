@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -40,7 +41,7 @@ const AdminPanel: React.FC = () => {
     isLocked: false,
     accessKey: '',
     accessDuration: 0,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3-flash-preview',
     baseUrl: '',
     customApiKey: '',
     keyPoolId: '',
@@ -52,17 +53,9 @@ const AdminPanel: React.FC = () => {
 
   const [formData, setFormData] = useState<Partial<Persona>>(defaultForm);
 
-  // --- Vault Logic ---
-  const defaultPoolForm: Partial<KeyPool> = {
-      name: '',
-      provider: 'custom',
-      keys: [],
-      deadKeys: {}
-  };
-  const [poolForm, setPoolForm] = useState<Partial<KeyPool>>(defaultPoolForm);
+  const [poolForm, setPoolForm] = useState<Partial<KeyPool>>({ name: '', provider: 'custom', keys: [], deadKeys: {} });
   const [poolKeysText, setPoolKeysText] = useState('');
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
-
 
   const resetForm = () => {
     setFormData(defaultForm);
@@ -98,7 +91,6 @@ const AdminPanel: React.FC = () => {
     }
 
     const payload = { ...formData };
-    // Clean up empty strings to avoid undefined behavior or persistence bloat
     if (!payload.keyPoolId) delete payload.keyPoolId;
     if (!payload.customApiKey) delete payload.customApiKey;
 
@@ -110,7 +102,6 @@ const AdminPanel: React.FC = () => {
     resetForm();
   };
 
-  // --- Vault Handlers ---
   const handleEditPool = (pool: KeyPool) => {
       setEditingPoolId(pool.id);
       setPoolForm(pool);
@@ -120,16 +111,8 @@ const AdminPanel: React.FC = () => {
   const handlePoolSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       if (!poolForm.name) return alert("Pool name required");
-      
-      // Intelligent key parsing
-      const keys = poolKeysText
-          .split(/[\n,]+/) 
-          .map(k => k.trim())
-          .map(k => k.replace(/[\u200B-\u200D\uFEFF]/g, '')) 
-          .map(k => k.replace(/[^\x20-\x7E]/g, '')) 
-          .filter(k => k.length > 0);
-
-      if (keys.length === 0) return alert("At least one valid key is required");
+      const keys = poolKeysText.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 0);
+      if (keys.length === 0) return alert("At least one key required");
 
       const newPool: KeyPool = {
           id: editingPoolId || Date.now().toString(),
@@ -139,22 +122,14 @@ const AdminPanel: React.FC = () => {
           deadKeys: poolForm.deadKeys || {}
       };
 
-      if (editingPoolId) {
-          updateKeyPool(newPool);
-      } else {
-          addKeyPool(newPool);
-      }
+      if (editingPoolId) updateKeyPool(newPool);
+      else addKeyPool(newPool);
+      
       setEditingPoolId(null);
-      setPoolForm(defaultPoolForm);
+      setPoolForm({ name: '', provider: 'custom', keys: [], deadKeys: {} });
       setPoolKeysText('');
   };
 
-  const handleReviveKeys = (pool: KeyPool) => {
-      updateKeyPool({ ...pool, deadKeys: {} });
-  };
-
-
-  // Avatar Configuration
   const AVATAR_OPTIONS = [
     { id: 'shield', label: 'Defense', desc: 'Blue Team / Protection', color: 'text-brand-500', bgColor: 'bg-brand-900/20', borderColor: 'border-brand-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
     { id: 'target', label: 'Offense', desc: 'Red Team / Attack', color: 'text-red-500', bgColor: 'bg-red-900/20', borderColor: 'border-red-600', icon: (props: any) => <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg> },
@@ -163,7 +138,6 @@ const AdminPanel: React.FC = () => {
   ];
   const selectedAvatar = AVATAR_OPTIONS.find(a => a.id === formData.avatar) || AVATAR_OPTIONS[0];
 
-  // --- Branding Logic ---
   const [brandingForm, setBrandingForm] = useState<SystemConfig>(config);
   const handleBrandingSave = (e: React.FormEvent) => {
       e.preventDefault();
@@ -171,7 +145,6 @@ const AdminPanel: React.FC = () => {
       alert("System configuration updated.");
   };
   
-  // --- Data Logic ---
   const [importText, setImportText] = useState('');
   const handleExport = () => {
       const data = exportData();
@@ -183,688 +156,149 @@ const AdminPanel: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
   };
-  const handleImport = () => {
+  const handleImport = async () => {
       if (!importText) return;
-      if (confirm("WARNING: This will overwrite your current configuration (Personas, Config, Keys). Chat history will be preserved. Continue?")) {
-          const success = importData(importText);
+      if (confirm("WARNING: This will overwrite global settings. Continue?")) {
+          const success = await importData(importText);
           if (success) {
-              alert("System restored successfully.");
+              alert("System restored globally.");
               setImportText('');
           } else {
-              alert("Import failed. Invalid JSON format.");
+              alert("Import failed.");
           }
       }
   };
 
-  // --- Analytics / User Analysis Logic ---
   const users = getAllUsers();
   const [inspectUserId, setInspectUserId] = useState<string | null>(null);
   
-  const getUserStats = (userId: string) => {
-      let msgCount = 0;
-      let activeChats = 0;
-      let lastActive = 0;
-
-      Object.entries(allChats).forEach(([key, val]) => {
-          const session = val as ChatSession;
-          if (key.startsWith(userId + '_')) {
-              activeChats++;
-              msgCount += session.messages.length;
-              const lastMsg = session.messages[session.messages.length - 1];
-              if (lastMsg && lastMsg.timestamp > lastActive) {
-                  lastActive = lastMsg.timestamp;
-              }
-          }
-      });
-      return { msgCount, activeChats, lastActive };
-  };
-
   const analyzedUserLogs = useMemo(() => {
     if (!inspectUserId) return [];
-    
-    const logs: Array<{
-        personaName: string;
-        role: 'user' | 'model';
-        text: string;
-        timestamp: number;
-    }> = [];
-
+    const logs: any[] = [];
     Object.entries(allChats).forEach(([key, val]) => {
+        // Fixed: Cast val (type unknown from Object.entries) to ChatSession to allow property access
         const session = val as ChatSession;
         if (key.startsWith(inspectUserId + '_')) {
-            const personaId = key.split('_')[1];
-            const personaName = personas.find(p => p.id === personaId)?.name || 'Unknown Agent';
-            
-            session.messages.forEach(msg => {
-                logs.push({
-                    personaName,
-                    role: msg.role,
-                    text: msg.text,
-                    timestamp: msg.timestamp
-                });
-            });
+            const personaName = personas.find(p => p.id === session.personaId)?.name || 'Unknown';
+            session.messages.forEach(msg => logs.push({ personaName, ...msg }));
         }
     });
-
     return logs.sort((a, b) => b.timestamp - a.timestamp);
-
   }, [inspectUserId, allChats, personas]);
-
 
   return (
     <Layout title="System Configuration">
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-             <h2 className="text-2xl font-bold text-white tracking-tight">Admin Console</h2>
+             <h2 className="text-2xl font-bold text-white tracking-tight">Admin Console (Global)</h2>
              <div className="flex bg-neutral-900 p-1 rounded-lg border border-neutral-800 overflow-x-auto">
-                 <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'ai' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Intelligence</button>
-                 <button onClick={() => setActiveTab('vault')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'vault' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Key Vaults</button>
-                 <button onClick={() => setActiveTab('users')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Operatives</button>
-                 <button onClick={() => setActiveTab('branding')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'branding' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Identity</button>
-                 <button onClick={() => setActiveTab('data')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}>Backup</button>
+                 <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'ai' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}>Intelligence</button>
+                 <button onClick={() => setActiveTab('vault')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'vault' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}>Vaults</button>
+                 <button onClick={() => setActiveTab('users')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}>Users</button>
+                 <button onClick={() => setActiveTab('branding')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'branding' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}>Identity</button>
+                 <button onClick={() => setActiveTab('data')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}>Maintenance</button>
              </div>
         </div>
 
       {activeTab === 'ai' && (
-      <div className="flex flex-col xl:flex-row gap-8 pb-20 animate-in fade-in">
+      <div className="flex flex-col xl:flex-row gap-8 pb-20">
         <div className="xl:w-1/3 order-2 xl:order-1">
-            <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 overflow-hidden">
+            <div className="bg-neutral-900 rounded-lg border border-neutral-800 overflow-hidden">
                 <div className="p-4 border-b border-neutral-800 bg-neutral-950/50 flex justify-between items-center">
-                    <h3 className="font-semibold text-neutral-300">Deployed Models</h3>
+                    <h3 className="font-semibold text-neutral-300">Global Personas</h3>
                     <span className="text-xs bg-neutral-800 text-neutral-500 px-2 py-1 rounded-full">{personas.length} Active</span>
                 </div>
                 <div className="divide-y divide-neutral-800 max-h-[600px] overflow-y-auto custom-scrollbar">
                     {personas.map(p => (
-                        <div key={p.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-neutral-800/50 transition-colors">
+                        <div key={p.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-neutral-800/50">
                             <div className="flex-1 min-w-0">
                                 <div className="font-medium text-white text-sm flex items-center gap-2">
                                     <span className="truncate">{p.name}</span>
-                                    {p.isLocked && <span className="flex-shrink-0 text-[10px] bg-red-900/20 text-red-500 px-1.5 py-0.5 rounded border border-red-900/30 uppercase font-bold">Lock</span>}
-                                    {p.rateLimit ? <span className="flex-shrink-0 text-[10px] bg-orange-900/20 text-orange-500 px-1.5 py-0.5 rounded border border-orange-900/30 font-bold">{p.rateLimit}/d</span> : null}
+                                    {p.isLocked && <span className="text-[10px] bg-red-900/20 text-red-500 px-1 rounded border border-red-900/30 uppercase font-bold">LOCKED</span>}
                                 </div>
-                                <div className="text-xs text-neutral-500 mt-1 font-mono truncate">{p.model}</div>
                             </div>
-                            <div className="flex gap-2 shrink-0">
-                                <Button type="button" variant="secondary" onClick={() => handleEdit(p)} className="px-3 py-1 text-xs h-8">Config</Button>
-                                <button 
-                                    type="button" 
-                                    onClick={(e) => handleDeleteClick(e, p.id)} 
-                                    className={`px-3 py-1 text-xs h-8 rounded-md font-bold transition-all duration-200 active:scale-95 cursor-pointer border ${
-                                        deleteConfirmId === p.id 
-                                        ? 'bg-red-600 text-white border-red-500 hover:bg-red-700 w-24 shadow-red-900/20 shadow-lg' 
-                                        : 'bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40 hover:text-red-300'
-                                    }`}
-                                >
-                                    {deleteConfirmId === p.id ? 'Confirm?' : 'Delete'}
-                                </button>
+                            <div className="flex gap-2">
+                                <Button type="button" variant="secondary" onClick={() => handleEdit(p)} className="px-3 h-8 text-xs">Edit</Button>
+                                <Button type="button" variant="danger" onClick={(e) => handleDeleteClick(e, p.id)} className="px-3 h-8 text-xs">
+                                    {deleteConfirmId === p.id ? 'Sure?' : 'Del'}
+                                </Button>
                             </div>
                         </div>
                     ))}
-                    {personas.length === 0 && <div className="p-8 text-center text-sm text-neutral-600">No active models deployed.</div>}
                 </div>
             </div>
         </div>
 
         <div className="xl:w-2/3 order-1 xl:order-2">
-            <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-neutral-800">
-                     <h3 className="text-lg font-semibold text-white">
-                        {editingId ? 'Modify Configuration' : 'Deploy New Model'}
-                    </h3>
-                    {editingId && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs bg-brand-900/30 text-brand-400 px-2 py-1 rounded font-mono">ID: {editingId}</span>
-                            <button onClick={resetForm} className="text-neutral-500 hover:text-white" title="Cancel Edit">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                    )}
-                </div>
-               
-                <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-6">
+               <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                         <Input 
-                             label="Designation (Name)" 
-                             value={formData.name || ''} 
-                             onChange={e => setFormData({...formData, name: e.target.value})} 
-                             required 
-                             placeholder="e.g. NETSEC_BOT_01"
-                         />
-                         
-                         <div className="space-y-3">
-                             <div className="relative" ref={dropdownRef}>
-                                <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-2">Preset Icon</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAvatarOpen(!isAvatarOpen)}
-                                    className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-neutral-900 border text-white rounded-md transition-all outline-none focus:ring-2 focus:ring-brand-900/20 ${isAvatarOpen ? 'border-brand-600 ring-2 ring-brand-900/20' : 'border-neutral-800 hover:border-neutral-600'}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-1.5 rounded-md ${selectedAvatar.bgColor}`}>
-                                            <selectedAvatar.icon className={`w-5 h-5 ${selectedAvatar.color}`} />
-                                        </div>
-                                        <div className="text-left">
-                                            <div className="text-sm font-medium">{selectedAvatar.label}</div>
-                                        </div>
-                                    </div>
-                                    <svg className={`w-5 h-5 text-neutral-500 transition-transform ${isAvatarOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-
-                                {isAvatarOpen && (
-                                    <div className="absolute z-10 w-full mt-1.5 bg-neutral-900 border border-neutral-800 rounded-lg shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                        <div className="p-1.5 grid grid-cols-1 gap-1">
-                                            {AVATAR_OPTIONS.map((opt) => (
-                                                <button
-                                                    key={opt.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setFormData({ ...formData, avatar: opt.id });
-                                                        setIsAvatarOpen(false);
-                                                    }}
-                                                    className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-left group ${formData.avatar === opt.id ? 'bg-neutral-800' : 'hover:bg-neutral-800'}`}
-                                                >
-                                                    <div className={`p-1.5 rounded-md ${opt.bgColor} border ${formData.avatar === opt.id ? opt.borderColor : 'border-transparent group-hover:border-neutral-700'}`}>
-                                                        <opt.icon className={`w-5 h-5 ${opt.color}`} />
-                                                    </div>
-                                                    <div>
-                                                        <div className={`text-sm font-medium ${formData.avatar === opt.id ? 'text-white' : 'text-neutral-300'}`}>{opt.label}</div>
-                                                        <div className="text-[10px] text-neutral-500 uppercase tracking-wide">{opt.desc}</div>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                             </div>
-                             
-                             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
-                                <Input 
-                                    label="Custom Icon URL"
-                                    value={formData.avatarUrl || ''} 
-                                    onChange={e => setFormData({...formData, avatarUrl: e.target.value})} 
-                                    placeholder="https://..."
-                                    className="mb-0"
-                                />
-                                <div className="mb-0">
-                                     <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Theme</label>
-                                     <div className="flex gap-2">
-                                        <input 
-                                            type="color" 
-                                            className="w-10 h-10 p-1 rounded bg-neutral-900 border border-neutral-800 cursor-pointer"
-                                            value={formData.themeColor || '#ef4444'} 
-                                            onChange={e => setFormData({...formData, themeColor: e.target.value})}
-                                        />
-                                        {formData.themeColor && (
-                                            <button 
-                                                type="button"
-                                                onClick={() => setFormData({...formData, themeColor: ''})}
-                                                className="px-2 py-1 bg-neutral-800 text-xs text-neutral-400 rounded hover:text-white"
-                                            >
-                                                Reset
-                                            </button>
-                                        )}
-                                     </div>
-                                </div>
-                             </div>
-                         </div>
-
+                         <Input label="Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
+                         <Input label="Model" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} required />
                     </div>
-                    <Input 
-                        label="Mission Description" 
-                        value={formData.description || ''} 
-                        onChange={e => setFormData({...formData, description: e.target.value})} 
-                        required 
-                        placeholder="Operational scope..."
-                    />
+                    <Input label="Description" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
+                    
                     <div className="w-full">
-                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">System Directives (Extended Capacity)</label>
+                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-2">System Directive (Huge Capacity - 20M Chars)</label>
                         <textarea 
-                            className="w-full bg-neutral-900 border border-neutral-800 focus:border-brand-600 focus:ring-1 focus:ring-brand-900/50 text-white rounded-md px-3.5 py-2.5 outline-none transition-all shadow-sm min-h-[600px] font-mono text-sm leading-relaxed resize-y"
+                            className="w-full bg-neutral-950 border border-neutral-800 focus:border-brand-600 text-white rounded-md px-4 py-3 outline-none min-h-[800px] font-mono text-sm leading-relaxed"
                             value={formData.systemPrompt || ''}
                             onChange={e => setFormData({...formData, systemPrompt: e.target.value})}
                             required
-                            maxLength={20000000} // 20 Million Characters
-                            placeholder="You are an expert in network security..."
+                            maxLength={20000000}
                         />
-                         <p className="text-xs text-neutral-500 mt-1">Defines AI behavior. Capacity increased to 20M characters.</p>
+                        <p className="text-[10px] text-neutral-500 mt-2 uppercase font-mono tracking-widest">Buffer Size: 20MB / Character Count: {(formData.systemPrompt || '').length.toLocaleString()}</p>
                     </div>
-                    <div className="p-5 bg-neutral-950/50 rounded-lg border border-neutral-800 grid grid-cols-1 gap-4">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-800 pb-2">Technical Configuration</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input 
-                                label="Base URL / Full Endpoint" 
-                                value={formData.baseUrl || ''} 
-                                onChange={e => setFormData({...formData, baseUrl: e.target.value})} 
-                                placeholder="https://api.openai.com/v1"
-                                className="mb-0"
-                            />
-                            <Input 
-                                label="Model ID" 
-                                value={formData.model || ''} 
-                                onChange={e => setFormData({...formData, model: e.target.value})} 
-                                placeholder="gemini-2.5-flash"
-                                className="mb-0"
-                            />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                             <div className="space-y-4">
-                                <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider">Authentication Method</label>
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-3">
-                                        <input 
-                                            type="radio" 
-                                            name="authMethod" 
-                                            checked={!formData.keyPoolId} 
-                                            onChange={() => setFormData({...formData, keyPoolId: ''})} 
-                                            className="bg-neutral-900 border-neutral-700 text-brand-600 focus:ring-brand-900"
-                                        />
-                                        <span className="text-sm text-neutral-300">Single API Key</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <input 
-                                            type="radio" 
-                                            name="authMethod" 
-                                            checked={!!formData.keyPoolId} 
-                                            onChange={() => {
-                                                const firstPool = keyPools.length > 0 ? keyPools[0].id : '';
-                                                setFormData({...formData, keyPoolId: firstPool})
-                                            }} 
-                                            className="bg-neutral-900 border-neutral-700 text-brand-600 focus:ring-brand-900"
-                                        />
-                                        <span className="text-sm text-neutral-300">Key Vault (Auto-Failover)</span>
-                                    </div>
-                                </div>
-                             </div>
 
-                             <div>
-                                 {!formData.keyPoolId ? (
-                                    <Input 
-                                        label="Single API Key" 
-                                        type="password" 
-                                        value={formData.customApiKey || ''} 
-                                        onChange={e => setFormData({...formData, customApiKey: e.target.value})} 
-                                        placeholder="Legacy method..."
-                                        className="mb-0"
-                                    />
-                                 ) : (
-                                    <div className="w-full mb-4">
-                                        <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Select Key Vault</label>
-                                        <select
-                                            className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-md px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-brand-900/20 focus:border-brand-600 shadow-sm"
-                                            value={formData.keyPoolId}
-                                            onChange={e => setFormData({...formData, keyPoolId: e.target.value})}
-                                        >
-                                            {keyPools.length === 0 && <option value="">No Vaults Created</option>}
-                                            {keyPools.map(pool => (
-                                                <option key={pool.id} value={pool.id}>{pool.name} ({pool.keys.length - Object.keys(pool.deadKeys).length}/{pool.keys.length} Active)</option>
-                                            ))}
-                                        </select>
-                                        {keyPools.length === 0 && <p className="text-xs text-red-500 mt-1">Create a Key Vault in the tabs above first.</p>}
-                                    </div>
-                                 )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-neutral-800">
+                         <div className="space-y-4">
+                             <label className="block text-neutral-400 text-xs font-bold uppercase mb-2">Security</label>
+                             <div className="flex items-center gap-3 p-3 bg-neutral-950 rounded-lg border border-neutral-800">
+                                <input type="checkbox" checked={formData.isLocked} onChange={e => setFormData({...formData, isLocked: e.target.checked})} className="w-5 h-5 rounded" />
+                                <span className="text-sm">Password Protect this AI</span>
                              </div>
-                        </div>
+                             {formData.isLocked && <Input label="Passkey" value={formData.accessKey || ''} onChange={e => setFormData({...formData, accessKey: e.target.value})} />}
+                         </div>
+                         <div className="space-y-4">
+                             <label className="block text-neutral-400 text-xs font-bold uppercase mb-2">Backend</label>
+                             <Input label="Base URL (Optional)" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} />
+                             <Input label="Direct API Key (Optional)" type="password" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} />
+                         </div>
+                    </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-neutral-800 pt-4 mt-2">
-                             <Input 
-                                label="Rate Limit (Msgs/Day)" 
-                                type="number" 
-                                value={formData.rateLimit || ''} 
-                                onChange={e => setFormData({...formData, rateLimit: parseInt(e.target.value) || 0})} 
-                                placeholder="0 = Unlimited"
-                                min="0"
-                                className="mb-0"
-                            />
-                        </div>
+                    <div className="flex gap-4 pt-6 border-t border-neutral-800">
+                        <Button type="submit" fullWidth>{editingId ? 'Push Update Globally' : 'Deploy Global AI'}</Button>
+                        {editingId && <Button type="button" variant="ghost" onClick={resetForm}>Cancel</Button>}
                     </div>
-                    <div className="flex items-center space-x-3 p-4 border border-neutral-800 rounded-lg bg-neutral-950/30">
-                        <input 
-                            type="checkbox" 
-                            id="isLocked"
-                            checked={formData.isLocked || false} 
-                            onChange={e => setFormData({...formData, isLocked: e.target.checked})}
-                            className="w-5 h-5 text-brand-600 border-neutral-700 bg-neutral-900 rounded focus:ring-brand-500 cursor-pointer"
-                        />
-                        <label htmlFor="isLocked" className="text-sm font-medium text-neutral-300 select-none cursor-pointer">
-                            Require Access Authorization (Lock)
-                        </label>
-                    </div>
-                    {formData.isLocked && (
-                        <div className="pl-4 border-l-2 border-brand-900 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                             <Input 
-                                label="Access Key" 
-                                value={formData.accessKey || ''} 
-                                onChange={e => setFormData({...formData, accessKey: e.target.value})} 
-                                required={formData.isLocked}
-                                placeholder="Set passcode..."
-                            />
-                            <Input 
-                                label="Access Duration (Hours)" 
-                                type="number"
-                                value={formData.accessDuration || ''} 
-                                onChange={e => setFormData({...formData, accessDuration: parseFloat(e.target.value)})} 
-                                placeholder="0 = Permanent"
-                                min="0"
-                            />
-                        </div>
-                    )}
-                    <div className="flex space-x-3 pt-6 border-t border-neutral-800">
-                        <Button type="submit" className="w-full md:w-auto">
-                            {editingId ? 'Commit Changes' : 'Initialize Agent'}
-                        </Button>
-                        {editingId && (
-                            <Button type="button" variant="ghost" onClick={() => { setEditingPoolId(null); setPoolForm({ name: '', provider: 'custom', keys: [], deadKeys: {} }); setPoolKeysText(''); }}>
-                                Cancel
-                            </Button>
-                        )}
-                    </div>
-                </form>
+               </form>
             </div>
         </div>
       </div>
       )}
 
-      {/* KEY VAULT TAB */}
-      {activeTab === 'vault' && (
-         <div className="flex flex-col xl:flex-row gap-8 pb-20 animate-in fade-in">
-             <div className="xl:w-1/3 order-2 xl:order-1">
-                 <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 overflow-hidden">
-                     <div className="p-4 border-b border-neutral-800 bg-neutral-950/50 flex justify-between items-center">
-                         <h3 className="font-semibold text-neutral-300">Available Vaults</h3>
-                         <span className="text-xs bg-neutral-800 text-neutral-500 px-2 py-1 rounded-full">{keyPools.length} Pools</span>
-                     </div>
-                     <div className="divide-y divide-neutral-800 max-h-[600px] overflow-y-auto custom-scrollbar">
-                         {keyPools.map(pool => {
-                             const deadCount = Object.keys(pool.deadKeys).length;
-                             const totalCount = pool.keys.length;
-                             const health = totalCount > 0 ? ((totalCount - deadCount) / totalCount) * 100 : 0;
-                             
-                             return (
-                                 <div key={pool.id} className="p-4 flex flex-col gap-3 hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => handleEditPool(pool)}>
-                                     <div className="flex justify-between items-start">
-                                         <div>
-                                             <div className="font-bold text-white flex items-center gap-2">
-                                                 {pool.name}
-                                                 {deadCount > 0 && <span className="text-[10px] bg-red-900/30 text-red-500 px-1.5 rounded font-mono border border-red-900/50">{deadCount} DEAD</span>}
-                                             </div>
-                                             <div className="text-xs text-neutral-500 mt-1 capitalize">{pool.provider} Provider</div>
-                                         </div>
-                                         <button onClick={(e) => { e.stopPropagation(); deleteKeyPool(pool.id); }} className="text-neutral-600 hover:text-red-500">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                         </button>
-                                     </div>
-                                     
-                                     {/* Health Bar */}
-                                     <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
-                                         <div 
-                                            className={`h-full ${health > 50 ? 'bg-green-500' : health > 20 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                                            style={{ width: `${health}%` }}
-                                         ></div>
-                                     </div>
-                                     <div className="text-[10px] text-neutral-500 font-mono text-right">
-                                         {totalCount - deadCount} / {totalCount} Keys Operational
-                                     </div>
-                                 </div>
-                             );
-                         })}
-                         {keyPools.length === 0 && <div className="p-8 text-center text-sm text-neutral-600">No vaults created.</div>}
-                     </div>
-                 </div>
-             </div>
-
-             <div className="xl:w-2/3 order-1 xl:order-2">
-                 <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6">
-                     <h3 className="text-lg font-semibold text-white mb-6 border-b border-neutral-800 pb-4">
-                         {editingPoolId ? `Editing: ${poolForm.name}` : 'Create New Key Vault'}
-                     </h3>
-                     
-                     <form onSubmit={handlePoolSubmit} className="space-y-6">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <Input 
-                                label="Vault Name"
-                                value={poolForm.name || ''}
-                                onChange={e => setPoolForm({...poolForm, name: e.target.value})}
-                                placeholder="e.g. HuggingFace Allocation A"
-                                required
-                             />
-                             <div>
-                                 <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-1.5">Provider Type</label>
-                                 <select 
-                                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-md px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-brand-900/20 focus:border-brand-600 shadow-sm"
-                                    value={poolForm.provider}
-                                    onChange={e => setPoolForm({...poolForm, provider: e.target.value as any})}
-                                 >
-                                     <option value="custom">Custom / Generic</option>
-                                     <option value="google">Google Gemini</option>
-                                     <option value="openai">OpenAI Compatible</option>
-                                 </select>
-                             </div>
-                         </div>
-
-                         <div>
-                             <div className="flex justify-between items-center mb-2">
-                                 <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider">API Keys (One per line)</label>
-                                 {Object.keys(poolForm.deadKeys || {}).length > 0 && (
-                                     <button 
-                                        type="button" 
-                                        onClick={() => handleReviveKeys(poolForm as KeyPool)}
-                                        className="text-[10px] text-green-400 hover:text-green-300 font-bold uppercase"
-                                     >
-                                         Revive Dead Keys
-                                     </button>
-                                 )}
-                             </div>
-                             <textarea 
-                                className="w-full bg-neutral-950 border border-neutral-800 font-mono text-xs text-brand-100 p-4 rounded-md h-64 focus:border-brand-600 outline-none resize-y"
-                                placeholder="sk-..."
-                                value={poolKeysText}
-                                onChange={e => setPoolKeysText(e.target.value)}
-                             />
-                             <p className="text-xs text-neutral-500 mt-2">
-                                 The system will automatically rotate through these keys. If a key hits a rate limit or expires, it will be marked as "Dead" and the system will instantly failover to the next key.
-                             </p>
-                         </div>
-
-                         <div className="pt-4 border-t border-neutral-800 flex gap-4">
-                             <Button type="submit">Save Vault</Button>
-                             {editingPoolId && (
-                                 <Button type="button" variant="ghost" onClick={() => { setEditingPoolId(null); setPoolForm({ name: '', provider: 'custom', keys: [], deadKeys: {} }); setPoolKeysText(''); }}>
-                                     Cancel
-                                 </Button>
-                             )}
-                         </div>
-                     </form>
-                 </div>
-             </div>
-         </div>
-      )}
-
-      {activeTab === 'users' && !inspectUserId && (
-        <div className="bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 overflow-hidden animate-in fade-in">
-             <div className="p-4 border-b border-neutral-800 bg-neutral-950/50 flex justify-between items-center">
-                    <h3 className="font-semibold text-neutral-300">Operative Roster</h3>
-                    <div className="text-xs text-neutral-500 bg-neutral-800 px-2 py-1 rounded">Total: {users.length}</div>
-             </div>
-             <div className="overflow-x-auto">
-                 <table className="w-full text-left text-sm text-neutral-400">
-                     <thead className="bg-neutral-800/50 text-neutral-200 uppercase font-bold text-xs">
-                         <tr>
-                             <th className="px-6 py-3">Identity</th>
-                             <th className="px-6 py-3">Role</th>
-                             <th className="px-6 py-3">Active Uplinks</th>
-                             <th className="px-6 py-3">Traffic Vol</th>
-                             <th className="px-6 py-3">Last Activity</th>
-                             <th className="px-6 py-3 text-right">Actions</th>
-                         </tr>
-                     </thead>
-                     <tbody className="divide-y divide-neutral-800">
-                         {users.length === 0 ? (
-                             <tr><td colSpan={6} className="px-6 py-8 text-center text-neutral-600">No data available.</td></tr>
-                         ) : users.map(u => {
-                             const stats = getUserStats(u.id);
-                             return (
-                                 <tr key={u.id} className="hover:bg-neutral-800/30 transition-colors">
-                                     <td className="px-6 py-4 font-medium text-white">{u.username} <div className="text-xs text-neutral-600 font-mono">ID: {u.id.substring(0,8)}...</div></td>
-                                     <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${u.role === 'ADMIN' ? 'bg-red-900/20 text-red-500' : 'bg-blue-900/20 text-blue-400'}`}>{u.role}</span></td>
-                                     <td className="px-6 py-4">{stats.activeChats}</td>
-                                     <td className="px-6 py-4">{stats.msgCount}</td>
-                                     <td className="px-6 py-4 font-mono text-xs">{stats.lastActive ? new Date(stats.lastActive).toLocaleString() : 'N/A'}</td>
-                                     <td className="px-6 py-4 text-right">
-                                         <Button variant="ghost" onClick={() => setInspectUserId(u.id)} className="h-8 py-0 text-xs border border-neutral-700">
-                                            Deep Analysis
-                                         </Button>
-                                     </td>
-                                 </tr>
-                             );
-                         })}
-                     </tbody>
-                 </table>
-             </div>
-        </div>
-      )}
-
-      {activeTab === 'users' && inspectUserId && (
-          <div className="animate-in fade-in slide-in-from-right-4">
-              <div className="flex items-center gap-4 mb-6">
-                  <Button variant="ghost" onClick={() => setInspectUserId(null)} className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                      Back to Roster
-                  </Button>
-                  <h3 className="text-xl font-bold text-white">
-                      Target Analysis: <span className="text-brand-500">{users.find(u => u.id === inspectUserId)?.username}</span>
-                  </h3>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                   <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 h-fit">
-                       <h4 className="text-sm font-bold text-neutral-400 uppercase tracking-wider mb-4">Activity Summary</h4>
-                       <div className="space-y-4">
-                            <div className="flex justify-between border-b border-neutral-800 pb-2">
-                                <span className="text-neutral-500 text-sm">Total Interactions</span>
-                                <span className="text-white font-mono">{analyzedUserLogs.length}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-neutral-800 pb-2">
-                                <span className="text-neutral-500 text-sm">Last Interaction</span>
-                                <span className="text-white font-mono text-xs">{analyzedUserLogs[0] ? new Date(analyzedUserLogs[0].timestamp).toLocaleString() : 'N/A'}</span>
-                            </div>
-                       </div>
-                   </div>
-                   
-                   <div className="lg:col-span-2 bg-neutral-900 rounded-lg border border-neutral-800 overflow-hidden flex flex-col max-h-[800px]">
-                       <div className="p-4 border-b border-neutral-800 bg-neutral-950/50">
-                           <h4 className="text-sm font-bold text-neutral-400 uppercase tracking-wider">Communication Intercept Log</h4>
-                       </div>
-                       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                           {analyzedUserLogs.length === 0 ? (
-                               <div className="text-center text-neutral-600 py-10 italic">No communication data found.</div>
-                           ) : analyzedUserLogs.map((log, idx) => (
-                               <div key={idx} className="flex gap-4">
-                                   <div className="flex-shrink-0 w-24 text-[10px] text-neutral-600 font-mono text-right pt-1">
-                                       {new Date(log.timestamp).toLocaleTimeString()}
-                                       <br/>
-                                       {new Date(log.timestamp).toLocaleDateString()}
-                                   </div>
-                                   <div className="flex-1">
-                                       <div className="flex items-center gap-2 mb-1">
-                                           <span className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded ${log.role === 'user' ? 'bg-neutral-800 text-neutral-300' : 'bg-brand-900/20 text-brand-500'}`}>
-                                               {log.role === 'user' ? 'OPERATIVE' : 'SYSTEM'}
-                                           </span>
-                                           <span className="text-[10px] text-neutral-500 bg-neutral-950 px-1 rounded border border-neutral-800">
-                                               Via: {log.personaName}
-                                           </span>
-                                       </div>
-                                       <div className={`text-sm p-3 rounded border ${log.role === 'user' ? 'bg-neutral-950/50 border-neutral-800 text-neutral-300' : 'bg-brand-900/5 border-brand-900/20 text-neutral-400'}`}>
-                                           {log.text}
-                                       </div>
-                                   </div>
-                               </div>
-                           ))}
-                       </div>
-                   </div>
-              </div>
-          </div>
-      )}
-
-      {activeTab === 'branding' && (
-        <div className="max-w-2xl bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6 animate-in fade-in">
-             <h3 className="text-lg font-semibold text-white mb-6">Visual Identity Configuration</h3>
-             <form onSubmit={handleBrandingSave} className="space-y-6">
-                 <Input 
-                    label="Platform Name"
-                    value={brandingForm.appName}
-                    onChange={e => setBrandingForm({...brandingForm, appName: e.target.value})}
-                    placeholder="Jailbreak Lab"
-                 />
-                 <Input 
-                    label="Creator Signature"
-                    value={brandingForm.creatorName}
-                    onChange={e => setBrandingForm({...brandingForm, creatorName: e.target.value})}
-                    placeholder="Created by BT4"
-                 />
-                 <Input 
-                    label="Logo URL"
-                    value={brandingForm.logoUrl}
-                    onChange={e => setBrandingForm({...brandingForm, logoUrl: e.target.value})}
-                    placeholder="https://example.com/logo.png"
-                 />
-                 
-                 <div className="p-4 bg-neutral-950 rounded border border-neutral-800 mt-4">
-                     <label className="block text-neutral-400 text-xs font-bold uppercase tracking-wider mb-3">Live Preview</label>
-                     <div className="flex items-center gap-3">
-                         {brandingForm.logoUrl ? (
-                             <img src={brandingForm.logoUrl} alt="Preview" className="w-10 h-10 rounded shadow object-cover" />
-                         ) : (
-                             <div className="w-10 h-10 bg-brand-600 rounded flex items-center justify-center text-white font-bold text-xl">
-                                 {brandingForm.appName.charAt(0) || 'J'}
-                             </div>
-                         )}
-                         <div>
-                             <div className="font-bold text-white">{brandingForm.appName || 'App Name'}</div>
-                             <div className="text-xs text-brand-500 uppercase tracking-widest">{brandingForm.creatorName || 'Creator'}</div>
-                         </div>
-                     </div>
-                 </div>
-
-                 <div className="pt-4">
-                     <Button type="submit">Update Identity</Button>
-                 </div>
-             </form>
-        </div>
-      )}
-
       {activeTab === 'data' && (
-          <div className="max-w-2xl bg-neutral-900 rounded-lg shadow-sm border border-neutral-800 p-6 animate-in fade-in">
-              <h3 className="text-lg font-semibold text-white mb-2">System Backup & Restore</h3>
-              <p className="text-sm text-neutral-400 mb-6">
-                  Export your configuration (Personas, Keys, Branding) to a JSON file to prevent data loss. 
-                  Chat logs are not included in backups to minimize file size.
-              </p>
-              
-              <div className="space-y-8">
-                  <div className="p-4 bg-neutral-950 rounded border border-neutral-800">
-                      <h4 className="text-sm font-bold text-brand-500 uppercase tracking-wider mb-2">Export Configuration</h4>
-                      <p className="text-xs text-neutral-500 mb-4">Download a JSON snapshot of your current system setup.</p>
-                      <Button onClick={handleExport} variant="secondary">Download Backup</Button>
+          <div className="max-w-4xl bg-neutral-900 rounded-lg border border-neutral-800 p-8">
+              <h3 className="text-xl font-bold text-white mb-6">Global Maintenance</h3>
+              <div className="grid grid-cols-1 gap-8">
+                  <div className="p-6 bg-neutral-950 rounded-xl border border-neutral-800">
+                      <h4 className="text-brand-500 font-bold uppercase text-xs mb-4">Export Global Config</h4>
+                      <Button onClick={handleExport} variant="secondary">Generate Cloud Snapshot</Button>
                   </div>
 
-                  <div className="p-4 bg-neutral-950 rounded border border-neutral-800">
-                      <h4 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Restore Configuration</h4>
-                      <p className="text-xs text-neutral-500 mb-4">Paste the contents of a backup file here. Capacity increased 80x for large backups.</p>
+                  <div className="p-6 bg-neutral-950 rounded-xl border border-neutral-800">
+                      <h4 className="text-red-500 font-bold uppercase text-xs mb-4">Hard Restore (80x Capacity - 100M Chars)</h4>
                       <textarea 
-                          className="w-full bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 p-3 rounded min-h-[600px] mb-3 outline-none focus:border-brand-600 font-mono resize-y"
-                          placeholder='Paste huge JSON data here... (Extended Buffer)'
+                          className="w-full bg-[#0a0a0a] border border-neutral-800 text-neutral-300 p-4 rounded-lg min-h-[800px] mb-4 font-mono text-xs"
+                          placeholder='Paste massive JSON backup here...'
                           value={importText}
                           onChange={(e) => setImportText(e.target.value)}
-                          maxLength={100000000} // 100 Million Chars (~100MB)
+                          maxLength={100000000}
                       />
-                      <Button onClick={handleImport} variant="danger" disabled={!importText}>Restore System</Button>
+                      <p className="text-[10px] text-neutral-600 mb-4 font-mono">Input Size: {(importText.length / 1024 / 1024).toFixed(2)} MB / Max: 100MB</p>
+                      <Button onClick={handleImport} variant="danger" disabled={!importText}>Execute Global Overwrite</Button>
                   </div>
               </div>
           </div>
       )}
-
     </Layout>
   );
 };

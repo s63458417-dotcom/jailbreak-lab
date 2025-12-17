@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { ADMIN_USERNAME, DEFAULT_ADMIN_PASS } from '../constants';
-import { db } from '../services/db';
+import { supabase } from '../services/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -19,187 +19,99 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [allUsersCache, setAllUsersCache] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Restore Session
   useEffect(() => {
-    const restoreSession = async () => {
-      try {
-        const saved = await db.get<User | null>('pentest_user_session', null);
-        if (saved) {
-           // Migration: ensure map format
-           if (Array.isArray(saved.unlockedPersonas)) {
-               const newMap: Record<string, number> = {};
-               saved.unlockedPersonas.forEach((id: string) => newMap[id] = Date.now());
-               saved.unlockedPersonas = newMap;
-           }
-           setUser(saved);
-        }
-      } catch (e) {
-        console.error("Auth Restore Error", e);
-      } finally {
-        setLoading(false);
+    const restore = async () => {
+      const saved = localStorage.getItem('pentest_session_id');
+      if (saved) {
+          const { data } = await supabase.from('users_db').select('*').eq('id', saved).single();
+          if (data) {
+              setUser({
+                  id: data.id,
+                  username: data.username,
+                  role: data.role as Role,
+                  unlockedPersonas: data.unlocked_personas || {}
+              });
+          }
       }
+      setLoading(false);
     };
-    restoreSession();
+    restore();
   }, []);
-
-  // Save Session
-  useEffect(() => {
-    if (!loading) {
-        if (user) db.set('pentest_user_session', user);
-        else db.delete('pentest_user_session');
-    }
-  }, [user, loading]);
 
   const login = async (username: string, pass: string): Promise<boolean> => {
     if (username === ADMIN_USERNAME && pass === DEFAULT_ADMIN_PASS) {
-      const adminUser: User = {
-        id: 'admin',
-        username: ADMIN_USERNAME,
-        role: Role.ADMIN,
-        unlockedPersonas: {}
-      };
-      setUser(adminUser);
+      const admin: User = { id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} };
+      setUser(admin);
+      localStorage.setItem('pentest_session_id', 'admin');
       window.location.hash = '#/dashboard';
       return true;
     }
 
-    try {
-        const dbUsers = await db.get<Record<string, any>>('pentest_users_db', {});
-        
-        const foundUser = Object.values(dbUsers).find((u: any) => u.username === username && u.password === pass) as any;
-        
-        if (foundUser) {
-           const { password, ...safeUser } = foundUser;
-           // Migration check
-           if (Array.isArray(safeUser.unlockedPersonas)) {
-              const newMap: Record<string, number> = {};
-              safeUser.unlockedPersonas.forEach((id: string) => newMap[id] = Date.now());
-              safeUser.unlockedPersonas = newMap;
-           }
-           setUser(safeUser);
-           window.location.hash = '#/dashboard';
-           return true;
-        }
-    } catch (e) {
-        console.error("Login failed", e);
+    const { data } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).single();
+    if (data) {
+      const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
+      setUser(u);
+      localStorage.setItem('pentest_session_id', u.id);
+      window.location.hash = '#/dashboard';
+      return true;
     }
     return false;
   };
 
   const register = async (username: string, pass: string): Promise<boolean> => {
-     try {
-         const dbUsers = await db.get<Record<string, any>>('pentest_users_db', {});
-         
-         if (Object.values(dbUsers).some((u: any) => u.username === username)) {
-           return false;
-         }
-
-         const newUser: User & { password: string } = {
-           id: Date.now().toString(),
-           username,
-           password: pass,
-           role: Role.USER,
-           unlockedPersonas: {}
-         };
-
-         dbUsers[newUser.id] = newUser;
-         await db.set('pentest_users_db', dbUsers);
-
-         const { password, ...safeUser } = newUser;
-         setUser(safeUser);
-         window.location.hash = '#/dashboard';
-         return true;
-     } catch (e) {
-         console.error("Registration failed", e);
-         return false;
-     }
+    const id = Date.now().toString();
+    const { error } = await supabase.from('users_db').insert({
+        id, username, password: pass, role: Role.USER, unlocked_personas: {}
+    });
+    if (!error) return login(username, pass);
+    return false;
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('pentest_session_id');
     window.location.hash = '';
   };
 
   const unlockPersona = async (personaId: string) => {
-    if (!user) return;
-    
-    const updatedUser = { 
-        ...user, 
-        unlockedPersonas: {
-            ...user.unlockedPersonas,
-            [personaId]: Date.now()
-        } 
-    };
-    
-    setUser(updatedUser);
-
-    if (user.role !== Role.ADMIN) {
-        try {
-            const dbUsers = await db.get<Record<string, any>>('pentest_users_db', {});
-            if (dbUsers[user.id]) {
-                dbUsers[user.id].unlockedPersonas = updatedUser.unlockedPersonas;
-                await db.set('pentest_users_db', dbUsers);
-            }
-        } catch (e) {
-            console.error("Unlock persist failed", e);
-        }
-    }
+    if (!user || user.id === 'admin') return;
+    const next = { ...user.unlockedPersonas, [personaId]: Date.now() };
+    setUser({ ...user, unlockedPersonas: next });
+    await supabase.from('users_db').update({ unlocked_personas: next }).eq('id', user.id);
   };
 
-  const updateProfile = async (newUsername: string, newPassword?: string): Promise<boolean> => {
-    if (!user) return false;
-
-    // Check availability
-    if (newUsername !== user.username) {
-         const dbUsers = await db.get<Record<string, any>>('pentest_users_db', {});
-         const exists = Object.values(dbUsers).some((u: any) => u.username === newUsername && u.id !== user.id);
-         if (exists) return false;
-    }
-
-    const updatedUser = { ...user, username: newUsername };
-    setUser(updatedUser);
-
-    if (user.role !== Role.ADMIN) {
-        try {
-            const dbUsers = await db.get<Record<string, any>>('pentest_users_db', {});
-            if (dbUsers[user.id]) {
-                dbUsers[user.id].username = newUsername;
-                if (newPassword && newPassword.trim() !== '') {
-                    dbUsers[user.id].password = newPassword;
-                }
-                await db.set('pentest_users_db', dbUsers);
-            }
-        } catch (e) {
-            console.error("Profile update failed", e);
-            return false;
-        }
-    }
-    return true; 
+  const updateProfile = async (newUsername: string, newPassword?: string) => {
+      if (!user || user.id === 'admin') return true;
+      const updates: any = { username: newUsername };
+      if (newPassword) updates.password = newPassword;
+      const { error } = await supabase.from('users_db').update(updates).eq('id', user.id);
+      if (!error) setUser({ ...user, username: newUsername });
+      return !error;
   };
 
-  const getAllUsers = (): User[] => {
-      // Note: This sync function might be limited if we strictly use async DB. 
-      // For Admin panel to work synchronously, we might need a separate mechanism or accept a promise.
-      // Current architecture in AdminPanel expects sync return. 
-      // We will perform a "best effort" using a cached state in memory, 
-      // BUT AuthContext doesn't keep all users in memory state.
-      // FIX: Return empty array here, AdminPanel should fetch async if needed.
-      // Or hack: we can't easily change the interface to async without breaking usages.
-      // For now, returning empty array is safer than crashing. 
-      // Ideally AdminPanel should be refactored to fetch users async.
-      return []; 
+  const getAllUsers = () => {
+      // In a real app, we'd fetch this async. For this context, we'll try to sync or provide an effect.
+      // This is a limitation of the current UI requiring sync return.
+      return allUsersCache;
   };
 
-  const getPersonaAccessTime = (personaId: string): number | undefined => {
-      if (!user) return undefined;
-      return user.unlockedPersonas[personaId];
-  }
+  useEffect(() => {
+      if (user?.role === Role.ADMIN) {
+          supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data }) => {
+              if (data) setAllUsersCache(data.map(d => ({
+                  id: d.id, username: d.username, role: d.role as Role, unlockedPersonas: d.unlocked_personas || {}
+              })));
+          });
+      }
+  }, [user]);
 
+  const getPersonaAccessTime = (id: string) => user?.unlockedPersonas[id];
   const isAdmin = user?.role === Role.ADMIN;
 
-  if (loading) return null; // Wait for session restore
+  if (loading) return null;
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, unlockPersona, getPersonaAccessTime, isAdmin, updateProfile, getAllUsers }}>
