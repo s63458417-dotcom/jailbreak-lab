@@ -1,3 +1,4 @@
+
 export enum Role {
   ADMIN = 'ADMIN',
   USER = 'USER',
@@ -11,6 +12,17 @@ export interface User {
   unlockedPersonas: Record<string, number>; // Map of Persona ID to Timestamp (when unlocked)
 }
 
+/**
+ * Interface representing a pool of API keys for rotation or backup.
+ */
+export interface KeyPool {
+  id: string;
+  name: string;
+  provider: 'standard' | 'custom';
+  keys: string[]; 
+  deadKeys: Record<string, number>; 
+}
+
 export interface Persona {
   id: string;
   name: string;
@@ -22,6 +34,7 @@ export interface Persona {
   model: string;
   baseUrl?: string; // For custom endpoints/proxies
   customApiKey?: string; // For endpoints requiring specific keys (HuggingFace, etc)
+  keyPoolId?: string; // Associated key pool for this persona
   avatar: string; // Icon type ID
   avatarUrl?: string; // Custom image URL for avatar
   themeColor?: string; // Custom hex color

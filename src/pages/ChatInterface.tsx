@@ -18,15 +18,15 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
       const encodedRaw = encodeURIComponent(code);
       const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return `
-        <div class="not-prose my-4 rounded-lg overflow-hidden border border-neutral-800 bg-neutral-900 group">
-          <div class="flex items-center justify-between px-4 py-2 bg-neutral-800 border-b border-neutral-800">
-            <span class="text-xs font-mono font-bold text-neutral-400 lowercase">${validLang}</span>
-            <button class="copy-btn flex items-center gap-2 text-xs font-medium text-neutral-400 hover:text-white transition-all px-2 py-1 rounded" data-code="${encodedRaw}">
-              <span>Copy</span>
+        <div class="not-prose my-6 rounded-2xl overflow-hidden border border-[#262626] bg-[#171717] shadow-xl">
+          <div class="flex items-center justify-between px-4 py-3 bg-[#262626] border-b border-[#333]">
+            <span class="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-widest">${validLang}</span>
+            <button class="copy-btn flex items-center gap-2 text-xs font-bold text-neutral-400 hover:text-white transition-all px-3 py-1.5 rounded-lg hover:bg-white/5 active:scale-95" data-code="${encodedRaw}">
+              <span>Copy Code</span>
             </button>
           </div>
-          <div class="p-4 overflow-x-auto custom-scrollbar bg-neutral-900">
-             <pre class="m-0 p-0 bg-transparent text-sm font-mono leading-relaxed text-neutral-200"><code class="language-${validLang}">${escapedCode}</code></pre>
+          <div class="p-5 overflow-x-auto custom-scrollbar bg-[#0d0d0d]">
+             <pre class="m-0 p-0 bg-transparent text-sm font-mono leading-relaxed text-blue-100/90"><code class="language-${validLang}">${escapedCode}</code></pre>
           </div>
         </div>
       `;
@@ -45,7 +45,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
       try {
         await navigator.clipboard.writeText(rawCode);
         const originalContent = btn.innerHTML;
-        btn.innerHTML = `<span class="text-green-400">Copied</span>`;
+        btn.innerHTML = `<span class="text-green-400">Copied!</span>`;
         setTimeout(() => { btn.innerHTML = originalContent; }, 2000);
       } catch (err) {}
     };
@@ -53,12 +53,12 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     return () => container.removeEventListener('click', handleCopy);
   }, [htmlContent]);
 
-  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:text-neutral-300" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
+  return <div ref={containerRef} className="prose prose-invert prose-sm max-w-none prose-p:text-[#ececec] prose-p:leading-relaxed prose-p:mb-5 prose-headings:text-white prose-headings:font-bold prose-strong:text-brand-400" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 
 const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
-  const { personas, getChatHistory, saveChatMessage, clearChatHistory, getValidKey } = useStore();
-  const { user, isAdmin } = useAuth();
+  const { personas, getChatHistory, saveChatMessage, clearChatHistory, getValidKey, config } = useStore();
+  const { user } = useAuth();
   const persona = personas.find(p => p.id === personaId);
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -66,23 +66,18 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
   const [chatSession, setChatSession] = useState<AISession | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    setMessages([]);
-    setTimeout(() => inputRef.current?.focus(), 100);
-  }, [personaId]);
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, isSending]);
 
   useEffect(() => {
     if (!user || !persona) return;
-    setConfirmClear(false);
     const history = getChatHistory(user.id, personaId);
     setMessages(history);
     let mounted = true;
@@ -110,7 +105,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     };
     initAI();
     return () => { mounted = false; };
-  }, [personaId, user, getChatHistory]);
+  }, [personaId, user]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isSending || !persona || !user || !chatSession) return;
@@ -133,53 +128,149 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     }
   };
 
-  if (!persona) return <Layout title="Error" isChatMode={true}><div>INVALID_TARGET</div></Layout>;
+  const handleNewChat = () => {
+    if (user && persona) {
+      clearChatHistory(user.id, persona.id);
+      setMessages([]);
+      window.location.reload(); // Force session reset
+    }
+  };
+
+  if (!persona) return <Layout title="Error" isChatMode={true}><div className="flex h-full items-center justify-center font-mono">TARGET_UPLINK_NOT_FOUND</div></Layout>;
 
   return (
     <Layout title={persona.name} isChatMode={true}>
-      <div className="flex flex-col h-full bg-neutral-950">
-        <div className="flex-shrink-0 h-14 flex items-center justify-between px-6 border-b border-neutral-800 bg-neutral-900">
-          <span className="text-sm font-bold text-white">{persona.name}</span>
-          <button onClick={() => { if(confirmClear) { clearChatHistory(user!.id, personaId); setMessages([]); } else { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 3000); } }} className="text-xs text-neutral-500 hover:text-white">{confirmClear ? "CONFIRM" : "Clear History"}</button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8" ref={scrollRef}>
-          <div className="max-w-4xl mx-auto space-y-6">
-            {messages.map(m => (
-              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-5 rounded-2xl ${m.role === 'user' ? 'bg-neutral-800 border border-neutral-700 text-white' : 'bg-transparent text-neutral-200 pl-0'}`}>
-                  {m.role === 'model' && <div className="text-xs font-bold text-brand-500 mb-2 uppercase tracking-widest">{persona.name}</div>}
-                  <MessageContent content={m.text} />
-                </div>
-              </div>
-            ))}
-            {isSending && <div className="text-xs text-neutral-500 animate-pulse font-mono uppercase tracking-widest pl-2">Processing Response...</div>}
-          </div>
-        </div>
+      <div className="flex flex-col h-full bg-[#0d0d0d] relative">
         
-        {/* Input Area - Restored visible Send Button */}
-        <div className="p-4 border-t border-neutral-800 bg-neutral-950">
-          <div className="max-w-4xl mx-auto flex items-center gap-2 relative">
-              <input 
-                ref={inputRef}
-                className="w-full bg-neutral-900 border border-neutral-800 text-white pl-5 pr-14 py-4 rounded-xl focus:border-brand-600 outline-none transition-all placeholder:text-neutral-600"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSend()}
-                placeholder="Type your message..."
-                disabled={isSending || isConnecting}
-              />
-              <button 
-                onClick={handleSend}
-                disabled={isSending || isConnecting || !inputValue.trim()}
-                className="absolute right-2 top-2 bottom-2 px-4 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white rounded-lg transition-colors flex items-center justify-center"
-              >
-                {isSending ? (
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+        {/* DeepSeek Style Header */}
+        <div className="flex-shrink-0 h-14 flex items-center justify-between px-6 bg-[#171717] border-b border-[#262626] z-30">
+             <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
+                    <span className="text-white font-bold text-xs">{persona.name.charAt(0)}</span>
+                 </div>
+                 <h1 className="text-sm font-bold text-white tracking-wide">{persona.name}</h1>
+             </div>
+             <div className="flex items-center gap-3">
+                 <button onClick={handleNewChat} className="p-2 text-neutral-400 hover:text-white transition-colors" title="Clear History">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                 </button>
+             </div>
+        </div>
+
+        {/* Message Stream */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar" ref={scrollRef}>
+          {messages.length === 0 ? (
+            /* Centered Landing View - Exactly like the Screenshot */
+            <div className="h-full flex flex-col items-center justify-center px-6 animate-in fade-in duration-1000">
+                <div className="w-16 h-16 rounded-3xl bg-brand-600 flex items-center justify-center mb-8 shadow-2xl shadow-brand-900/40 transform transition-transform hover:scale-105">
+                   {persona.avatarUrl ? <img src={persona.avatarUrl} className="w-full h-full object-cover rounded-3xl" /> : <svg className="w-10 h-10 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>}
+                </div>
+                <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Hi, I'm {persona.name}.</h2>
+                <p className="text-neutral-500 text-lg font-medium text-center max-w-md">
+                    {persona.description || "How can I help you today?"}
+                </p>
+                <div className="mt-12 flex flex-wrap justify-center gap-3">
+                    <span className="px-4 py-2 rounded-full bg-white/5 border border-white/5 text-xs text-neutral-400 font-mono">MODEL: {persona.model}</span>
+                    <span className="px-4 py-2 rounded-full bg-white/5 border border-white/5 text-xs text-neutral-400 font-mono uppercase tracking-widest">Uplink Secured</span>
+                </div>
+            </div>
+          ) : (
+            <div className="max-w-4xl mx-auto py-10 px-6 space-y-10">
+                {messages.map((m) => (
+                  <div key={m.id} className={`flex w-full ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`relative ${m.role === 'user' ? 'max-w-[85%] bg-[#2b2b2b] text-white px-5 py-3 rounded-[1.25rem] rounded-tr-none border border-white/5' : 'w-full'}`}>
+                      {m.role === 'model' && (
+                        <div className="flex items-center gap-2 mb-4">
+                           <div className="w-6 h-6 rounded-md bg-brand-600/20 border border-brand-600/30 flex items-center justify-center text-brand-400 text-[10px] font-bold shadow-sm">AI</div>
+                           <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-widest">{persona.name}</span>
+                        </div>
+                      )}
+                      <MessageContent content={m.text} />
+                    </div>
+                  </div>
+                ))}
+                {isSending && (
+                  <div className="flex w-full justify-start animate-pulse">
+                     <div className="w-full">
+                        <div className="flex items-center gap-2 mb-4">
+                           <div className="w-6 h-6 rounded-md bg-brand-600/20 border border-brand-600/30 flex items-center justify-center text-brand-400 text-[10px] font-bold">AI</div>
+                           <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-widest">Generating Intelligence...</span>
+                        </div>
+                        <div className="h-4 w-1/2 bg-white/5 rounded-full mb-2"></div>
+                        <div className="h-4 w-1/3 bg-white/5 rounded-full"></div>
+                     </div>
+                  </div>
                 )}
-              </button>
-          </div>
+                <div className="h-10" />
+            </div>
+          )}
+        </div>
+
+        {/* Floating Rounded Input Center */}
+        <div className="px-4 pb-8 pt-2 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d] to-transparent">
+            <div className="max-w-3xl mx-auto">
+                {/* Behavior Pills - Exactly like the Screenshot */}
+                <div className="flex items-center gap-2 mb-3 px-1">
+                    <button className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#171717] border border-[#262626] hover:bg-[#262626] text-[11px] font-bold text-neutral-300 transition-all active:scale-95 group">
+                        <svg className="w-4 h-4 text-brand-500 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        DeepThink
+                    </button>
+                    <button className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#171717] border border-[#262626] hover:bg-[#262626] text-[11px] font-bold text-neutral-300 transition-all active:scale-95 group">
+                        <svg className="w-4 h-4 text-brand-400 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                        Search
+                    </button>
+                </div>
+
+                {/* Input Area */}
+                <div className="relative bg-[#171717] border border-[#262626] rounded-3xl p-1.5 shadow-2xl focus-within:border-brand-600/50 transition-all duration-300 group">
+                    <textarea 
+                        ref={inputRef}
+                        rows={1}
+                        className="w-full bg-transparent text-white pl-4 pr-16 py-3 outline-none resize-none text-base placeholder:text-neutral-600 custom-scrollbar max-h-48"
+                        placeholder={`Message ${persona.name}...`}
+                        value={inputValue}
+                        onChange={(e) => {
+                            setInputValue(e.target.value);
+                            e.target.style.height = 'auto';
+                            e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
+                        disabled={isSending || isConnecting}
+                    />
+                    
+                    {/* Floating Send Button - Circular Blue style */}
+                    <button 
+                        onClick={handleSend}
+                        disabled={isSending || isConnecting || !inputValue.trim()}
+                        className={`absolute right-2.5 bottom-2.5 w-10 h-10 flex items-center justify-center rounded-2xl transition-all shadow-lg active:scale-90 ${
+                            inputValue.trim() 
+                            ? 'bg-brand-600 hover:bg-brand-500 text-white' 
+                            : 'bg-[#262626] text-neutral-600'
+                        }`}
+                    >
+                        {isSending ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                            <svg className="w-5 h-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                        )}
+                    </button>
+                    
+                    {/* Add attachment/plus button logic if needed */}
+                    <button className="absolute left-3 bottom-3 p-1.5 text-neutral-500 hover:text-white transition-colors">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    </button>
+                    <div className="absolute left-10 bottom-3.5 w-[1px] h-4 bg-white/5 ml-2"></div>
+                </div>
+                
+                <p className="mt-3 text-center text-[10px] text-neutral-700 font-mono tracking-widest uppercase opacity-40">
+                    {config.appName} // {config.creatorName}
+                </p>
+            </div>
         </div>
       </div>
     </Layout>

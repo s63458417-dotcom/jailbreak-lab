@@ -18,16 +18,16 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// ErrorBoundary class to catch rendering errors.
-// Fix: Use the named 'Component' import directly to ensure TypeScript correctly identifies the class properties 'state' and 'props'.
+/**
+ * ErrorBoundary class to catch rendering errors.
+ * Fixed: Explicitly use the imported Component class and class properties for state to ensure TypeScript correctly identifies properties.
+ */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
+  // Use class property for state initialization to help TypeScript inference
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };

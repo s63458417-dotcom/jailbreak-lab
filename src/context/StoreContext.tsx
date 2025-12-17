@@ -22,7 +22,6 @@ interface StoreContextType {
   getValidKey: (poolId: string) => string | null;
   reportKeyFailure: (poolId: string, key: string) => Promise<void>;
   getUsageCount: (userId: string, personaId: string) => number;
-  incrementUsage: (userId: string, personaId: string) => void; 
   exportData: () => string;
   importData: (jsonData: string) => Promise<boolean>;
   isReady: boolean;
@@ -38,7 +37,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [keyPools, setKeyPools] = useState<KeyPool[]>([]);
 
   const loadData = async () => {
-    // If Supabase is absolutely missing (rare with hardcoded fallback), use local defaults
     if (!isSupabaseConfigured()) {
       setPersonas(INITIAL_PERSONAS);
       setIsReady(true);
@@ -55,13 +53,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       if (p.data && p.data.length > 0) {
         setPersonas(p.data.map((x: any) => ({ 
-          id: x.id, name: x.name, description: x.description,
-          systemPrompt: x.system_prompt, isLocked: x.is_locked, 
-          accessKey: x.access_key, model: x.model, keyPoolId: x.key_pool_id,
-          avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
+          id: x.id, 
+          name: x.name, 
+          description: x.description,
+          systemPrompt: x.system_prompt, 
+          isLocked: x.is_locked, 
+          accessKey: x.access_key, 
+          accessDuration: x.access_duration,
+          model: x.model, 
+          baseUrl: x.base_url,
+          customApiKey: x.custom_api_key,
+          keyPoolId: x.key_pool_id,
+          avatar: x.avatar, 
+          avatarUrl: x.avatar_url, 
+          themeColor: x.theme_color, 
+          rateLimit: x.rate_limit
         })));
       } else {
-        // Only use defaults if the cloud table is literally empty
         setPersonas(INITIAL_PERSONAS);
       }
       
@@ -84,7 +92,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setChats(map);
       }
     } catch (err) {
-      console.error("CLOUD_SYNC_ERROR: Falling back to memory.", err);
+      console.error("CLOUD_SYNC_ERROR", err);
       setPersonas(INITIAL_PERSONAS);
     } finally {
       setIsReady(true);
@@ -98,7 +106,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isSupabaseConfigured()) {
         await supabase.from('personas').upsert({ 
           id: p.id, name: p.name, description: p.description, system_prompt: p.systemPrompt, 
-          is_locked: p.isLocked, access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+          is_locked: p.isLocked, access_key: p.accessKey, access_duration: p.accessDuration,
+          model: p.model, base_url: p.baseUrl, custom_api_key: p.customApiKey, key_pool_id: p.keyPoolId,
           avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
         });
     }
@@ -109,7 +118,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isSupabaseConfigured()) {
         await supabase.from('personas').update({ 
           name: p.name, description: p.description, system_prompt: p.systemPrompt, 
-          is_locked: p.isLocked, access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+          is_locked: p.isLocked, access_key: p.accessKey, access_duration: p.accessDuration,
+          model: p.model, base_url: p.baseUrl, custom_api_key: p.customApiKey, key_pool_id: p.keyPoolId,
           avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
         }).eq('id', p.id);
     }
@@ -179,8 +189,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return msgs.filter(m => m.role === 'user' && m.timestamp >= today).length;
   };
 
-  const incrementUsage = (uid: string, pid: string) => {};
-
   const exportData = () => JSON.stringify({ personas, config, keyPools }, null, 2);
 
   const importData = async (json: string) => {
@@ -196,7 +204,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             for (const p of data.personas) {
                 tasks.push(supabase.from('personas').upsert({ 
                     id: p.id, name: p.name, description: p.description, system_prompt: p.systemPrompt, 
-                    is_locked: p.isLocked, access_key: p.accessKey, model: p.model, key_pool_id: p.keyPoolId,
+                    is_locked: p.isLocked, access_key: p.accessKey, access_duration: p.accessDuration,
+                    model: p.model, base_url: p.baseUrl, custom_api_key: p.customApiKey, key_pool_id: p.keyPoolId,
                     avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
                 }));
             }
@@ -229,7 +238,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               await supabase.from('system_config').upsert({ id: 'global', app_name: c.appName, creator_name: c.creatorName, logo_url: c.logoUrl }); 
           }
       },
-      allChats: chats, keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, getUsageCount, incrementUsage, exportData, importData, isReady
+      allChats: chats, keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, getUsageCount, exportData, importData, isReady
     }}>
       {children}
     </StoreContext.Provider>
