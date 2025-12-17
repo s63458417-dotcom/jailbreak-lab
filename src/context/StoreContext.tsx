@@ -15,12 +15,15 @@ interface StoreContextType {
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => void;
   allChats: Record<string, ChatSession>;
+  
+  // Vaults / Key Pools
   keyPools: KeyPool[];
-  addKeyPool: (pool: KeyPool) => void;
-  updateKeyPool: (pool: KeyPool) => void;
-  deleteKeyPool: (id: string) => void;
+  addKeyPool: (pool: KeyPool) => Promise<void>;
+  updateKeyPool: (pool: KeyPool) => Promise<void>;
+  deleteKeyPool: (id: string) => Promise<void>;
   getValidKey: (poolId: string) => string | null;
-  reportKeyFailure: (poolId: string, key: string) => void;
+  reportKeyFailure: (poolId: string, key: string) => Promise<void>;
+
   getUsageCount: (userId: string, personaId: string) => number;
   incrementUsage: (userId: string, personaId: string) => void;
   exportData: () => string;
@@ -58,7 +61,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           supabase.from('key_pools').select('*')
         ]);
 
-        if (pResp.data && pResp.data.length > 0) {
+        if (pResp.data) {
             setPersonas(pResp.data.map((p: any) => ({
                 id: p.id,
                 name: p.name,
@@ -76,15 +79,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 themeColor: p.theme_color,
                 rateLimit: p.rate_limit
             })));
-        } else {
-            // Seed DB if empty
-            for (const p of INITIAL_PERSONAS) {
-                await supabase.from('personas').insert({
-                    id: p.id, name: p.name, description: p.description, system_prompt: p.systemPrompt,
-                    is_locked: p.isLocked, access_key: p.accessKey, model: p.model, avatar: p.avatar
-                });
-            }
-            setPersonas(INITIAL_PERSONAS);
         }
 
         if (cResp.data) {
@@ -95,7 +89,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             });
         }
         
-        if (kResp.data) setKeyPools(kResp.data);
+        if (kResp.data) {
+            setKeyPools(kResp.data);
+        }
 
         setIsReady(true);
       } catch (e) {
@@ -184,20 +180,68 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Simplified Vault Methods
-  const addKeyPool = (p: KeyPool) => setKeyPools(prev => [...prev, p]);
-  const updateKeyPool = (p: KeyPool) => setKeyPools(prev => prev.map(i => i.id === p.id ? p : i));
-  const deleteKeyPool = (id: string) => setKeyPools(prev => prev.filter(i => i.id !== id));
-  const getValidKey = (id: string) => keyPools.find(i => i.id === id)?.keys[0] || null;
-  const reportKeyFailure = () => {};
-  const getUsageCount = () => 0;
-  const incrementUsage = () => {};
+  // --- VAULT LOGIC ---
+  const addKeyPool = async (p: KeyPool) => {
+    setKeyPools(prev => [...prev, p]);
+    if (isSupabaseConfigured()) {
+        await supabase.from('key_pools').insert(p);
+    }
+  };
 
-  const exportData = () => JSON.stringify({ personas, config }, null, 2);
+  const updateKeyPool = async (p: KeyPool) => {
+    setKeyPools(prev => prev.map(i => i.id === p.id ? p : i));
+    if (isSupabaseConfigured()) {
+        await supabase.from('key_pools').update(p).eq('id', p.id);
+    }
+  };
+
+  const deleteKeyPool = async (id: string) => {
+    setKeyPools(prev => prev.filter(i => i.id !== id));
+    if (isSupabaseConfigured()) {
+        await supabase.from('key_pools').delete().eq('id', id);
+    }
+  };
+
+  const getValidKey = (poolId: string): string | null => {
+      const pool = keyPools.find(p => p.id === poolId);
+      if (!pool || pool.keys.length === 0) return null;
+      
+      const now = Date.now();
+      // Filter out keys that failed in the last 1 hour
+      const availableKeys = pool.keys.filter(k => {
+          const failTime = pool.deadKeys[k] || 0;
+          return (now - failTime) > 3600000; 
+      });
+
+      if (availableKeys.length === 0) return null;
+      // Randomly pick one to balance load
+      return availableKeys[Math.floor(Math.random() * availableKeys.length)];
+  };
+
+  const reportKeyFailure = async (poolId: string, key: string) => {
+      setKeyPools(prev => prev.map(pool => {
+          if (pool.id !== poolId) return pool;
+          const updated = {
+              ...pool,
+              deadKeys: { ...pool.deadKeys, [key]: Date.now() }
+          };
+          if (isSupabaseConfigured()) {
+              supabase.from('key_pools').update({ dead_keys: updated.deadKeys }).eq('id', poolId);
+          }
+          return updated;
+      }));
+  };
+
+  const getUsageCount = (userId: string, personaId: string) => 0; // Simplified for this restore
+  const incrementUsage = (userId: string, personaId: string) => {};
+
+  const exportData = () => JSON.stringify({ personas, config, keyPools }, null, 2);
+  
   const importData = async (json: string) => {
       try {
           const data = JSON.parse(json);
           if (data.config) await updateConfig(data.config);
+          // Potential logic for batch inserting personas/vaults here
           return true;
       } catch { return false; }
   };
