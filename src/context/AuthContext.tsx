@@ -18,6 +18,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getLocalUsers = (): any => JSON.parse(localStorage.getItem('local_users_db') || '{}');
+const saveLocalUsers = (db: any) => localStorage.setItem('local_users_db', JSON.stringify(db));
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [allUsersCache, setAllUsersCache] = useState<User[]>([]);
@@ -26,26 +29,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const restore = async () => {
       const saved = localStorage.getItem('pentest_session_id');
-      if (saved) {
-          if (saved === 'admin') {
-             setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
-          } else if (isSupabaseConfigured()) {
-             try {
-                const { data, error } = await supabase.from('users_db').select('*').eq('id', saved).maybeSingle();
-                if (data && !error) {
-                    setUser({
-                        id: data.id,
-                        username: data.username,
-                        role: data.role as Role,
-                        unlockedPersonas: data.unlocked_personas || {}
-                    });
-                } else {
-                    localStorage.removeItem('pentest_session_id');
-                }
-             } catch (e) {
-                 console.error("Auth Restore Failure", e);
-             }
+      if (!saved) {
+        setLoading(false);
+        return;
+      }
+
+      if (saved === 'admin') {
+        setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
+      } else if (isSupabaseConfigured()) {
+        try {
+          const { data, error } = await supabase.from('users_db').select('*').eq('id', saved).maybeSingle();
+          if (data && !error) {
+            setUser({
+              id: data.id,
+              username: data.username,
+              role: data.role as Role,
+              unlockedPersonas: data.unlocked_personas || {}
+            });
+          } else {
+             localStorage.removeItem('pentest_session_id');
           }
+        } catch (e) { console.error("Cloud restore failed", e); }
+      } else {
+        const db = getLocalUsers();
+        if (db[saved]) {
+          const u = db[saved];
+          setUser({ id: u.id, username: u.username, role: u.role, unlockedPersonas: u.unlockedPersonas || {} });
+        }
       }
       setLoading(false);
     };
@@ -54,57 +64,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, pass: string): Promise<boolean> => {
     if (username === ADMIN_USERNAME && pass === DEFAULT_ADMIN_PASS) {
-      const admin: User = { id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} };
-      setUser(admin);
+      setUser({ id: 'admin', username: ADMIN_USERNAME, role: Role.ADMIN, unlockedPersonas: {} });
       localStorage.setItem('pentest_session_id', 'admin');
       window.location.hash = '#/dashboard';
       return true;
     }
 
-    if (!isSupabaseConfigured()) {
-        alert("CRITICAL: Cloud Database not linked. Contact administrator.");
-        return false;
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).maybeSingle();
+        if (data && !error) {
+          const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
+          setUser(u);
+          localStorage.setItem('pentest_session_id', u.id);
+          window.location.hash = '#/dashboard';
+          return true;
+        }
+      } catch (e) { console.error("Cloud login error", e); }
     }
 
-    const { data, error } = await supabase.from('users_db').select('*').eq('username', username).eq('password', pass).maybeSingle();
-    
-    if (error) {
-        console.error("Database Login Error", error);
-        alert(`UPLINK ERROR: ${error.message}`);
-        return false;
-    }
-
-    if (data) {
-      const u: User = { id: data.id, username: data.username, role: data.role as Role, unlockedPersonas: data.unlocked_personas || {} };
-      setUser(u);
-      localStorage.setItem('pentest_session_id', u.id);
+    const db = getLocalUsers();
+    const found = Object.values(db).find((u: any) => u.username === username && u.password === pass) as any;
+    if (found) {
+      setUser({ id: found.id, username: found.username, role: found.role, unlockedPersonas: found.unlockedPersonas || {} });
+      localStorage.setItem('pentest_session_id', found.id);
       window.location.hash = '#/dashboard';
       return true;
     }
+
     return false;
   };
 
   const register = async (username: string, pass: string): Promise<boolean> => {
-    // We attempt registration regardless of local 'isConfigured' status 
-    // to allow environment-variable based connections to work.
     const id = Date.now().toString();
-    try {
-        const { error } = await supabase.from('users_db').insert({
-            id, username, password: pass, role: Role.USER, unlocked_personas: {} 
-        });
-        
-        if (error) {
-            console.error("Registration Error", error);
-            if (error.code === '42P01') alert("DATABASE ERROR: Tables not found. Run the SQL schema.");
-            else alert(`REGISTRATION FAILED: ${error.message}`);
-            return false;
-        }
-        
-        return login(username, pass);
-    } catch (err: any) {
-        alert(`CONNECTION FAILED: ${err.message}`);
-        return false;
+    const newUser = { id, username, password: pass, role: Role.USER, unlocked_personas: {} };
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase.from('users_db').insert(newUser);
+        if (!error) return login(username, pass);
+        console.error("Cloud Registration Error", error);
+        // If it's a duplication error, don't allow local fallback to create a split identity
+        if (error.code === '23505') return false; 
+      } catch (e) { console.error("Register crash", e); }
     }
+
+    const db = getLocalUsers();
+    if (Object.values(db).some((u: any) => u.username === username)) return false;
+    db[id] = { ...newUser, unlockedPersonas: {} };
+    saveLocalUsers(db);
+    return login(username, pass);
   };
 
   const logout = () => {
@@ -117,31 +126,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user || user.id === 'admin') return;
     const next = { ...user.unlockedPersonas, [personaId]: Date.now() };
     setUser({ ...user, unlockedPersonas: next });
-    await supabase.from('users_db').update({ unlocked_personas: next }).eq('id', user.id);
+    
+    if (isSupabaseConfigured()) {
+      await supabase.from('users_db').update({ unlocked_personas: next }).eq('id', user.id);
+    } else {
+      const db = getLocalUsers();
+      if (db[user.id]) {
+        db[user.id].unlockedPersonas = next;
+        saveLocalUsers(db);
+      }
+    }
   };
 
   const updateProfile = async (newUsername: string, newPassword?: string) => {
       if (!user || user.id === 'admin') return true;
       const updates: any = { username: newUsername };
       if (newPassword) updates.password = newPassword;
-      const { error } = await supabase.from('users_db').update(updates).eq('id', user.id);
-      if (!error) {
-          setUser({ ...user, username: newUsername });
-          return true;
+
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('users_db').update(updates).eq('id', user.id);
+        if (error) return false;
+      } else {
+        const db = getLocalUsers();
+        if (db[user.id]) {
+          db[user.id].username = newUsername;
+          if (newPassword) db[user.id].password = newPassword;
+          saveLocalUsers(db);
+        }
       }
-      return false;
+      
+      setUser({ ...user, username: newUsername });
+      return true;
   };
 
   const getAllUsers = () => allUsersCache;
 
   useEffect(() => {
-      if (user?.role === Role.ADMIN && isSupabaseConfigured()) {
-          supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data }) => {
-              if (data) setAllUsersCache(data.map(d => ({
-                  id: d.id, username: d.username, role: d.role as Role, unlockedPersonas: d.unlocked_personas || {}
-              })));
-          });
+    if (user?.role === Role.ADMIN) {
+      if (isSupabaseConfigured()) {
+        supabase.from('users_db').select('id, username, role, unlocked_personas').then(({ data }) => {
+          if (data) setAllUsersCache(data.map(d => ({
+            id: d.id, username: d.username, role: d.role as Role, unlockedPersonas: d.unlocked_personas || {}
+          })));
+        });
+      } else {
+        const db = getLocalUsers();
+        setAllUsersCache(Object.values(db).map((u: any) => ({
+          id: u.id, username: u.username, role: u.role, unlockedPersonas: u.unlockedPersonas || {}
+        })));
       }
+    }
   }, [user]);
 
   const getPersonaAccessTime = (id: string) => user?.unlockedPersonas[id];

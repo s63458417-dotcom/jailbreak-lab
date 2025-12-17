@@ -18,11 +18,13 @@ export const createChatSession = async (
   baseUrl?: string,
   customApiKey?: string
 ): Promise<AISession> => {
+  // Guidelines: API key must be obtained exclusively from the environment variable process.env.API_KEY
   const envKey = process.env.API_KEY || '';
-  let apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
+  
+  // Use envKey for Gemini or passed key for custom endpoints
+  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey : envKey;
 
-  apiKey = apiKey ? apiKey.trim() : '';
-  if (!apiKey) throw new Error("AUTHENTICATION_REQUIRED");
+  if (!apiKey && !baseUrl) throw new Error("AUTHENTICATION_REQUIRED");
 
   // Logic: Non-google endpoints are generic OpenAI-compat
   const isGeneric = !!(baseUrl && !baseUrl.includes('googleapis.com'));
@@ -43,6 +45,7 @@ export const sendMessageToGemini = async (
 ): Promise<string> => {
   if (!session) throw new Error("SESSION_NULL");
 
+  // --- PATH A: GENERIC OPENAI-COMPATIBLE ---
   if (session.isGeneric) {
     let endpoint = session.baseUrl || '';
     if (!endpoint.endsWith('/chat/completions')) {
@@ -78,18 +81,26 @@ export const sendMessageToGemini = async (
     }
   }
 
-  // Google Path
+  // --- PATH B: GOOGLE GENAI SDK ---
   try {
-    const ai = new GoogleGenAI({ apiKey: session.apiKey });
+    // Guidelines: Always initialize with new GoogleGenAI({apiKey: process.env.API_KEY})
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Format history for generateContent
     const contents = session.history.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
     contents.push({ role: 'user', parts: [{ text: message }] });
 
+    // Guidelines: Always use ai.models.generateContent with model and contents together
     const response = await ai.models.generateContent({
       model: session.modelName,
       contents,
-      config: { systemInstruction: session.systemInstruction, temperature: 0.7 }
+      config: { 
+        systemInstruction: session.systemInstruction, 
+        temperature: 0.7 
+      }
     });
 
+    // Guidelines: Access text as a property on the response object
     return response.text || "";
   } catch (err: any) {
     throw new Error(`GEMINI_ERROR: ${err.message}`);

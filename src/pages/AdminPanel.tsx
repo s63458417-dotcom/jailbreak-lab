@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useStore } from '../context/StoreContext';
@@ -5,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Persona, SystemConfig, ChatSession, KeyPool } from '../types';
 import Button from '../components/Button';
 import Input from '../components/Input';
-import { initSupabase } from '../services/supabase';
+import { initSupabase, isSupabaseConfigured } from '../services/supabase';
 
 const AdminPanel: React.FC = () => {
   const { 
@@ -25,7 +26,7 @@ const AdminPanel: React.FC = () => {
   const handleSaveDb = () => {
       if (!dbUrl || !dbKey) return alert("Credentials required");
       initSupabase(dbUrl, dbKey);
-      alert("Database link established. The application will now sync globally.");
+      alert("Database link established. IMPORTANT: This only works for YOUR browser. To make this work for everyone, add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your Vercel settings.");
       window.location.reload(); 
   };
 
@@ -133,9 +134,10 @@ const AdminPanel: React.FC = () => {
 
       {activeTab === 'db' && (
           <div className="max-w-xl bg-[#1a1a1a] rounded-xl border border-neutral-800 p-8">
-              <h3 className="text-xl font-bold text-white mb-6">Supabase Global Sync</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Supabase Global Sync</h3>
+              <p className="text-xs text-red-500 font-bold mb-6">⚠️ SETTING THIS HERE ONLY SAVES IN YOUR BROWSER. TO SYNC ALL USERS, USE ENVIRONMENT VARIABLES.</p>
               <div className="space-y-6">
-                  <Input label="Project URL" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
+                  <Input label="Project URL" value={dbUrl} onChange={e => setDbUrl(e.target.value)} placeholder="https://xyz.supabase.co" />
                   <Input label="Anon/Public Key" type="password" value={dbKey} onChange={e => setDbKey(e.target.value)} />
                   <Button onClick={handleSaveDb} fullWidth>Initialize Handshake</Button>
               </div>
