@@ -18,11 +18,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary: Explicitly typed props and state in class component using property initializers 
-// and React.Component to resolve TypeScript inference issues where 'state' or 'props' are not recognized.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Use property initializer for state to ensure TypeScript correctly identifies the property
-  public override state: ErrorBoundaryState = {
+// Fixed ErrorBoundary: Explicitly use Component from react and remove 'override' from state property
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // state is a property defined in React.Component; using property initializers without 'override'
+  public state: ErrorBoundaryState = {
     hasError: false,
     error: null,
   };
@@ -36,7 +35,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Correctly accessing state which is now recognized by the compiler
+    // Correctly accessing state which is now recognized by the compiler after inheritance fix
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">

@@ -1,12 +1,15 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Retrieve credentials from LocalStorage if set via UI, otherwise fallback to env
 const getSupabaseConfig = () => {
+  // 1. Check process.env (Standard for Vercel/Netlify/Vite)
+  // Fix: Cast import.meta to any to access .env property safely when type definitions are missing
+  const envUrl = ((import.meta as any).env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env.SUPABASE_URL) || '';
+  const envKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || (typeof process !== 'undefined' && process.env.SUPABASE_ANON_KEY) || '';
+  
+  // 2. Fallback to LocalStorage (User/Admin manual override)
   const uiUrl = localStorage.getItem('supabase_url');
   const uiKey = localStorage.getItem('supabase_key');
-  
-  const envUrl = (typeof process !== 'undefined' && process.env.SUPABASE_URL) || '';
-  const envKey = (typeof process !== 'undefined' && process.env.SUPABASE_ANON_KEY) || '';
 
   return {
     url: uiUrl || envUrl,
@@ -16,10 +19,10 @@ const getSupabaseConfig = () => {
 
 const config = getSupabaseConfig();
 
-// Initial client (might be invalid until configured)
+// Initialize the client. We use a placeholder if nothing is found to prevent crashing.
 export let supabase: SupabaseClient = createClient(
-  config.url || 'https://placeholder-project.supabase.co', 
-  config.key || 'placeholder-key'
+  config.url || 'https://placeholder.supabase.co', 
+  config.key || 'placeholder'
 );
 
 export const initSupabase = (url: string, key: string) => {
@@ -31,5 +34,6 @@ export const initSupabase = (url: string, key: string) => {
 
 export const isSupabaseConfigured = () => {
   const { url, key } = getSupabaseConfig();
-  return url && url.includes('supabase.co') && key && key.length > 20;
+  // We return true if the URL looks valid, allowing the app to attempt connection
+  return !!(url && url.includes('supabase.co') && key && key.length > 10);
 };
