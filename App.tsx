@@ -14,24 +14,23 @@ interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
 
 /**
  * ErrorBoundary class to catch rendering errors.
- * Fix: Explicitly use Component and declare state to resolve "Property 'state' does not exist" and "Property 'props' does not exist" errors.
  */
+// Added Component to imports and used it for inheritance to ensure state and props are correctly typed.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly defining state property for robust TypeScript type inference.
-  public state: ErrorBoundaryState = {
-    hasError: false,
-    error: null,
-  };
-
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    // Properly initializing state.
+    this.state = {
+      hasError: false,
+      error: null,
+    };
   }
   
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Crash:", error, errorInfo); }
   
   render() {
-    // Fix: state property is now recognized due to explicit generic inheritance
+    // Fixed state access by ensuring the class inherits correctly from Component<P, S>.
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -41,7 +40,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Fix: property 'props' is now recognized due to explicit generic inheritance
+    // Fixed props access by ensuring the class inherits correctly from Component<P, S>.
     return this.props.children;
   }
 }
@@ -56,8 +55,8 @@ const AppContent: React.FC = () => {
       if (!hash || hash === '#') hash = '#/dashboard';
       setRoute(hash);
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', h => handleHashChange());
+    return () => window.removeEventListener('hashchange', h => handleHashChange());
   }, []);
 
   if (!user) {

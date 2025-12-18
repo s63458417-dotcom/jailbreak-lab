@@ -88,7 +88,7 @@ const AdminPanel: React.FC = () => {
                         <div className="flex justify-between items-start">
                             <div>
                                 <div className="text-sm font-bold text-white">{p.name}</div>
-                                <div className="text-[10px] text-neutral-500 font-mono uppercase truncate w-32">{p.model || 'Static Payload'}</div>
+                                <div className="text-[10px] text-neutral-500 font-mono uppercase truncate w-32">{p.model || 'Native Link'}</div>
                             </div>
                             <button onClick={() => deletePersona(p.id)} className="text-red-500 hover:text-red-400 text-xs uppercase font-bold">Terminate</button>
                         </div>
@@ -106,12 +106,12 @@ const AdminPanel: React.FC = () => {
                     <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
                   </div>
                   <div>
-                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Model (Leave blank if URL has it)</label>
-                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="e.g. gemini-2.5-flash-lite" />
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Model (Leave blank if URL specific)</label>
+                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="e.g. deepseek-ai/DeepSeek-V3" />
                   </div>
                </div>
                <div>
-                  <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Endpoint URL (Full Link Supported)</label>
+                  <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Endpoint URL (Base or Full Link)</label>
                   <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://..." required />
                </div>
                <div>

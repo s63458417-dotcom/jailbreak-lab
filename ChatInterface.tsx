@@ -20,7 +20,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
         <div class="not-prose my-6 rounded-2xl overflow-hidden border border-[#262626] bg-[#171717] shadow-xl">
           <div class="flex items-center justify-between px-4 py-3 bg-[#262626] border-b border-[#333]">
             <span class="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-widest">${validLang}</span>
-            <button class="copy-btn flex items-center gap-2 text-xs font-bold text-neutral-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all" data-code="${encodedRaw}">
+            <button class="copy-btn flex items-center gap-2 text-xs font-bold text-neutral-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all active:scale-95" data-code="${encodedRaw}">
               Copy
             </button>
           </div>
@@ -106,7 +106,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     } finally { setIsSending(false); }
   };
 
-  if (!persona) return <div>Persona Not Found</div>;
+  if (!persona) return <div className="p-10 text-white font-mono">PERSONA_NOT_FOUND</div>;
 
   return (
     <Layout title={persona.name} isChatMode={true}>
@@ -117,7 +117,10 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
              <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-xs">
                 {persona.name.charAt(0)}
              </div>
-             <span className="font-bold text-sm text-white">{persona.name}</span>
+             <div className="flex flex-col">
+                <span className="font-bold text-sm text-white leading-tight">{persona.name}</span>
+                <span className="text-[9px] text-neutral-500 font-mono uppercase tracking-widest">{persona.model || 'Static Payload'}</span>
+             </div>
           </div>
           <button onClick={() => { if(confirm("Terminate session history?")) { clearChatHistory(user!.id, persona.id); setMessages([]); } }} className="p-2 text-neutral-500 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -135,7 +138,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                 <p className="text-neutral-500 text-lg font-medium max-w-md">{persona.description || "Active uplink ready for instructions."}</p>
                 <div className="mt-8 flex gap-3">
                    <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest uppercase">Uplink Secured</div>
-                   {persona.model && <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest uppercase">{persona.model}</div>}
+                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest uppercase">E2EE Stream</div>
                 </div>
             </div>
           ) : (
@@ -158,7 +161,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
           )}
         </div>
 
-        {/* Input Control Area */}
+        {/* Input area */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d] to-transparent pointer-events-none">
           <div className="max-w-3xl mx-auto pointer-events-auto">
             <div className="relative bg-[#171717] border border-[#262626] rounded-3xl p-1.5 shadow-2xl focus-within:border-brand-600 transition-all group">
@@ -167,7 +170,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                 onChange={(e) => { setInputValue(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
                 onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 className="w-full bg-transparent text-white pl-4 pr-14 py-3 outline-none resize-none text-base placeholder:text-neutral-600 custom-scrollbar max-h-40"
-                placeholder={`Message ${persona.name}...`}
+                placeholder={`Send instructions to ${persona.name}...`}
               />
               <button onClick={handleSend} disabled={!inputValue.trim() || isSending} className={`absolute right-2.5 bottom-2.5 w-10 h-10 rounded-2xl flex items-center justify-center transition-all shadow-lg active:scale-90 ${inputValue.trim() ? 'bg-brand-600 text-white' : 'bg-[#262626] text-neutral-600'}`}>
                 {isSending ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <svg className="w-5 h-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>}

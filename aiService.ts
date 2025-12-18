@@ -29,18 +29,20 @@ export const sendMessageToAI = async (
   session: AISession,
   message: string
 ): Promise<string> => {
-  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Set Base URL in Admin.");
+  if (!session.baseUrl) throw new Error("ENDPOINT_REQUIRED: Please set the Base URL in the Admin Panel.");
   
-  const endpoint = session.baseUrl;
-  const isGoogleNative = endpoint.includes('generativelanguage.googleapis.com');
+  const url = session.baseUrl;
+  const isGoogle = url.includes('generativelanguage.googleapis.com');
   
   try {
-    let body: any;
+    let finalUrl = url;
     let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let body: any;
 
-    if (isGoogleNative) {
-      // --- NATIVE GEMINI PROTOCOL ---
+    if (isGoogle) {
+      // --- BRANCH A: GOOGLE NATIVE PROTOCOL ---
       headers['x-goog-api-key'] = session.apiKey;
+      
       body = {
         contents: [
           ...session.history.map(m => ({
@@ -54,13 +56,18 @@ export const sendMessageToAI = async (
         },
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 4096
         }
       };
     } else {
-      // --- OPENAI / GENERIC PROTOCOL (Gopher, Gock, HuggingFace, etc.) ---
+      // --- BRANCH B: OPENAI / HUGGING FACE / GENERIC PROTOCOL ---
       if (session.apiKey) {
         headers['Authorization'] = `Bearer ${session.apiKey}`;
+      }
+
+      // Automatically handle v1 base URLs
+      if (finalUrl.includes('/v1') && !finalUrl.endsWith('/chat/completions') && !finalUrl.includes('?')) {
+        finalUrl = finalUrl.replace(/\/$/, '') + '/chat/completions';
       }
 
       const messages = [
@@ -78,38 +85,34 @@ export const sendMessageToAI = async (
         temperature: 0.7
       };
 
-      // Only include model if specifically provided by the admin
+      // Only include 'model' if provided by the admin. 
+      // This allows direct HF model endpoints or proxies to work without conflict.
       if (session.modelName && session.modelName.trim().length > 0) {
         body.model = session.modelName;
       }
-
-      // Automatically append /chat/completions if it's a base URL and not a direct file/param link
-      let finalEndpoint = endpoint;
-      if (!finalEndpoint.endsWith('/chat/completions') && !finalEndpoint.includes('?') && !finalEndpoint.includes(':')) {
-        finalEndpoint = finalEndpoint.replace(/\/$/, '') + '/chat/completions';
-      }
     }
 
-    const response = await fetch(endpoint, {
+    const response = await fetch(finalUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(body)
     });
 
     if (!response.ok) {
-        const errData = await response.text();
-        throw new Error(`Provider Error ${response.status}: ${errData.substring(0, 150)}`);
+        const errorData = await response.text();
+        throw new Error(`Uplink Error ${response.status}: ${errorData.substring(0, 200)}`);
     }
 
     const data = await response.json();
 
-    // Support extraction from multiple formats
-    if (isGoogleNative) {
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini.";
+    // Dynamically parse based on protocol
+    if (isGoogle) {
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "No text returned from Gemini.";
     } else {
-      return data.choices?.[0]?.message?.content || data.content || data.response || "No response received.";
+      // Handles OpenAI, DeepSeek, and HF Router formats
+      return data.choices?.[0]?.message?.content || data.content || data.response || "No valid response field found.";
     }
   } catch (err: any) {
-    throw new Error(`CONNECTION_ERROR: ${err.message}`);
+    throw new Error(`UPLINK_FAILURE: ${err.message}`);
   }
 };
