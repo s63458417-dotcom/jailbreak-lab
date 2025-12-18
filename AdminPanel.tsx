@@ -4,8 +4,6 @@ import Layout from './Layout';
 import { useStore } from './StoreContext';
 import { useAuth } from './AuthContext';
 import { Persona, SystemConfig, KeyPool, ChatSession } from './types';
-import Button from './components/Button';
-import Input from './components/Input';
 import { initSupabase } from './supabaseService';
 
 const AdminPanel: React.FC = () => {
@@ -31,19 +29,21 @@ const AdminPanel: React.FC = () => {
 
   // AI Persona Form
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Partial<Persona>>({ name: '', description: '', systemPrompt: '', model: 'gpt-4o', avatar: 'shield' });
+  const [formData, setFormData] = useState<Partial<Persona>>({ name: '', description: '', systemPrompt: '', model: '', baseUrl: '', customApiKey: '', avatar: 'shield' });
+  
   const handlePersonaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) await updatePersona({ ...formData, id: editingId } as Persona);
     else await addPersona({ ...formData, id: Date.now().toString() } as Persona);
     setEditingId(null);
-    setFormData({ name: '', description: '', systemPrompt: '', model: 'gpt-4o', avatar: 'shield' });
+    setFormData({ name: '', description: '', systemPrompt: '', model: '', baseUrl: '', customApiKey: '', avatar: 'shield' });
   };
 
   // Vault Form
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
   const [poolForm, setPoolForm] = useState<Partial<KeyPool>>({ name: '', provider: 'standard', keys: [] });
   const [poolKeysText, setPoolKeysText] = useState('');
+  
   const handlePoolSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const keys = poolKeysText.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 0);
@@ -76,7 +76,7 @@ const AdminPanel: React.FC = () => {
       <div className="mb-8 flex overflow-x-auto bg-[#1a1a1a] p-1.5 rounded-2xl border border-neutral-800 gap-1 no-scrollbar text-white">
         {['ai', 'vault', 'users', 'branding', 'cloud', 'data'].map(tab => (
           <button key={tab} onClick={() => { setActiveTab(tab as any); setInspectUserId(null); }} className={`px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all whitespace-nowrap ${activeTab === tab ? 'bg-brand-600 text-white shadow-lg' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}>
-            {tab === 'ai' ? 'Intelligence' : tab === 'cloud' ? 'Cloud Link' : tab}
+            {tab === 'ai' ? 'Uplinks' : tab === 'cloud' ? 'Cloud' : tab}
           </button>
         ))}
       </div>
@@ -85,14 +85,14 @@ const AdminPanel: React.FC = () => {
         <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in">
           <div className="xl:w-1/3">
             <div className="bg-[#171717] rounded-2xl border border-[#262626] overflow-hidden">
-               <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Deployed Personas</div>
+               <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Operational Uplinks</div>
                <div className="divide-y divide-[#262626]">
                   {personas.map(p => (
                     <div key={p.id} className="p-4 flex flex-col gap-3 hover:bg-white/5">
                         <div className="flex justify-between items-start">
                             <div>
                                 <div className="text-sm font-bold text-white">{p.name}</div>
-                                <div className="text-[10px] text-neutral-500 font-mono uppercase">{p.model}</div>
+                                <div className="text-[10px] text-neutral-500 font-mono uppercase truncate w-32">{p.model || 'No Model Set'}</div>
                             </div>
                             <button onClick={() => deletePersona(p.id)} className="text-red-500 hover:text-red-400 text-xs uppercase font-bold">Del</button>
                         </div>
@@ -105,20 +105,35 @@ const AdminPanel: React.FC = () => {
           <div className="xl:w-2/3 bg-[#171717] rounded-2xl border border-[#262626] p-6 shadow-2xl">
             <form onSubmit={handlePersonaSubmit} className="space-y-6">
                <div className="grid grid-cols-2 gap-4">
-                  <Input label="Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                  <Input label="Model" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} required />
+                  <div>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Display Name</label>
+                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
+                  </div>
+                  <div>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Model Name (Optional)</label>
+                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="e.g. gpt-4o" />
+                  </div>
                </div>
-               <Input label="Base URL" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://..." />
+               <div>
+                  <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Base URL / Endpoint</label>
+                  <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://..." required />
+               </div>
                <div>
                   <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">System Directives</label>
-                  <textarea className="w-full bg-[#0d0d0d] border border-[#262626] text-neutral-200 p-5 rounded-2xl min-h-[200px] font-mono text-xs focus:border-brand-600 outline-none" value={formData.systemPrompt || ''} onChange={e => setFormData({...formData, systemPrompt: e.target.value})} required />
+                  <textarea className="w-full bg-[#0d0d0d] border border-[#262626] text-neutral-200 p-5 rounded-2xl min-h-[150px] font-mono text-xs focus:border-brand-600 outline-none" value={formData.systemPrompt || ''} onChange={e => setFormData({...formData, systemPrompt: e.target.value})} required />
                </div>
                <div className="grid grid-cols-2 gap-4">
-                  <select className="w-full bg-[#0d0d0d] border border-[#262626] text-white rounded-xl p-3 text-xs font-bold outline-none" value={formData.keyPoolId || ''} onChange={e => setFormData({...formData, keyPoolId: e.target.value})}>
-                     <option value="">Direct Credential</option>
-                     {keyPools.map(pool => <option key={pool.id} value={pool.id}>{pool.name} (Vault)</option>)}
-                  </select>
-                  <Input label="Direct API Key" type="password" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} />
+                  <div>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Credential Source</label>
+                    <select className="w-full bg-[#0d0d0d] border border-[#262626] text-white rounded-xl p-3 text-xs font-bold outline-none" value={formData.keyPoolId || ''} onChange={e => setFormData({...formData, keyPoolId: e.target.value})}>
+                       <option value="">Direct Credential</option>
+                       {keyPools.map(pool => <option key={pool.id} value={pool.id}>{pool.name} (Vault)</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Direct API Key (Optional)</label>
+                    <input type="password" className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} />
+                  </div>
                </div>
                <button type="submit" className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl shadow-lg transition-all active:scale-95">
                   {editingId ? 'Update Uplink' : 'Initialize Uplink'}
@@ -143,10 +158,13 @@ const AdminPanel: React.FC = () => {
            </div>
            <div className="xl:w-2/3 bg-[#171717] p-8 rounded-2xl border border-[#262626]">
               <form onSubmit={handlePoolSubmit} className="space-y-6">
-                 <Input label="Vault Name" value={poolForm.name || ''} onChange={e => setPoolForm({...poolForm, name: e.target.value})} required />
+                 <div>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Vault Name</label>
+                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={poolForm.name || ''} onChange={e => setPoolForm({...poolForm, name: e.target.value})} required />
+                 </div>
                  <div>
                     <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Keys (One per line)</label>
-                    <textarea className="w-full bg-[#0d0d0d] border border-[#262626] text-neutral-300 p-5 rounded-2xl min-h-[300px] font-mono text-xs outline-none" value={poolKeysText} onChange={e => setPoolKeysText(e.target.value)} required />
+                    <textarea className="w-full bg-[#0d0d0d] border border-[#262626] text-neutral-300 p-5 rounded-2xl min-h-[250px] font-mono text-xs outline-none" value={poolKeysText} onChange={e => setPoolKeysText(e.target.value)} required />
                  </div>
                  <button type="submit" className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl transition-all shadow-lg active:scale-95">Update Vault Cache</button>
               </form>
@@ -154,7 +172,7 @@ const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'users' && !inspectUserId && (
+      {activeTab === 'users' && (
         <div className="bg-[#171717] rounded-2xl border border-[#262626] overflow-hidden animate-in fade-in">
            <table className="w-full text-left text-sm text-neutral-400">
               <thead className="bg-[#0d0d0d] text-neutral-200 uppercase font-bold text-[10px] tracking-widest">
@@ -170,53 +188,62 @@ const AdminPanel: React.FC = () => {
                       <td className="px-6 py-4 font-bold text-white">{u.username}</td>
                       <td className="px-6 py-4 font-mono text-xs">{u.role}</td>
                       <td className="px-6 py-4 text-right">
-                         <button onClick={() => setInspectUserId(u.id)} className="text-brand-500 hover:text-brand-400 font-bold text-[10px] uppercase tracking-widest">Deep Analysis</button>
+                         <button onClick={() => setInspectUserId(u.id)} className="text-brand-500 hover:text-brand-400 font-bold text-[10px] uppercase tracking-widest">Intercept Logs</button>
                       </td>
                    </tr>
                  ))}
               </tbody>
            </table>
-        </div>
-      )}
-
-      {activeTab === 'users' && inspectUserId && (
-        <div className="animate-in fade-in slide-in-from-right-4">
-           <button onClick={() => setInspectUserId(null)} className="mb-6 text-neutral-500 hover:text-white flex items-center gap-2 text-xs font-bold uppercase">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              Back to Roster
-           </button>
-           <h3 className="text-xl font-bold text-white mb-6">Intercept Log: <span className="text-brand-500">{users.find(u => u.id === inspectUserId)?.username}</span></h3>
-           <div className="bg-[#171717] rounded-2xl border border-[#262626] p-6 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar font-mono text-xs">
-              {analyzedLogs.length === 0 ? <div className="text-neutral-600 italic">No communication data found.</div> : analyzedLogs.map((log, idx) => (
-                <div key={idx} className={`p-3 rounded-lg border ${log.role === 'user' ? 'bg-[#0d0d0d] border-[#262626] text-neutral-400' : 'bg-brand-900/10 border-brand-900/20 text-brand-500'}`}>
-                   <div className="flex justify-between mb-1 opacity-50">
-                      <span>[{log.personaName}] {new Date(log.timestamp).toLocaleTimeString()}</span>
-                      <span>{log.role.toUpperCase()}</span>
-                   </div>
-                   <div className="leading-relaxed">{log.text}</div>
-                </div>
-              ))}
-           </div>
+           {inspectUserId && (
+              <div className="p-8 border-t border-[#262626] bg-black/10">
+                 <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-white">Transmission Intercept: <span className="text-brand-500">{users.find(u => u.id === inspectUserId)?.username}</span></h3>
+                    <button onClick={() => setInspectUserId(null)} className="text-neutral-500 hover:text-white text-xs font-bold uppercase">Close Logs</button>
+                 </div>
+                 <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar font-mono text-[11px]">
+                    {analyzedLogs.length === 0 ? <div className="text-neutral-700 italic">No communication packets found.</div> : analyzedLogs.map((log, idx) => (
+                      <div key={idx} className={`p-3 rounded-lg border ${log.role === 'user' ? 'bg-[#0d0d0d] border-[#262626] text-neutral-500' : 'bg-brand-950/20 border-brand-900/30 text-brand-400'}`}>
+                         <div className="flex justify-between mb-1 opacity-50 uppercase font-bold text-[9px]">
+                            <span>[{log.personaName}] {new Date(log.timestamp).toLocaleString()}</span>
+                            <span>{log.role}</span>
+                         </div>
+                         <div className="whitespace-pre-wrap">{log.text}</div>
+                      </div>
+                    ))}
+                 </div>
+              </div>
+           )}
         </div>
       )}
 
       {activeTab === 'branding' && (
-        <div className="max-w-2xl bg-[#171717] p-8 rounded-2xl border border-[#262626] animate-in fade-in">
+        <div className="max-w-xl bg-[#171717] p-8 rounded-2xl border border-[#262626] animate-in fade-in">
            <form onSubmit={(e) => { e.preventDefault(); updateConfig(config); alert("Identity Updated."); }} className="space-y-6">
-              <Input label="App Name" value={config.appName} onChange={e => updateConfig({...config, appName: e.target.value})} />
-              <Input label="Creator Signature" value={config.creatorName} onChange={e => updateConfig({...config, creatorName: e.target.value})} />
-              <Input label="Logo URL" value={config.logoUrl} onChange={e => updateConfig({...config, logoUrl: e.target.value})} />
-              <button type="submit" className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl shadow-lg transition-all active:scale-95">Save System Identity</button>
+              <div>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">App Name</label>
+                <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={config.appName} onChange={e => updateConfig({...config, appName: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Signature</label>
+                <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={config.creatorName} onChange={e => updateConfig({...config, creatorName: e.target.value})} />
+              </div>
+              <button type="submit" className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl shadow-lg transition-all active:scale-95">Save Branding</button>
            </form>
         </div>
       )}
 
       {activeTab === 'cloud' && (
         <div className="max-w-xl bg-[#171717] p-10 rounded-2xl border border-[#262626] animate-in fade-in shadow-2xl">
-           <h3 className="text-2xl font-bold text-white mb-8 tracking-tight">Cloud Link Protocol</h3>
+           <h3 className="text-2xl font-bold text-white mb-8 tracking-tight">Cloud Database Link</h3>
            <div className="space-y-6">
-              <Input label="Supabase URL" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
-              <Input label="Supabase Key" type="password" value={dbKey} onChange={e => setDbKey(e.target.value)} />
+              <div>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Supabase URL</label>
+                <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Supabase Key</label>
+                <input type="password" className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={dbKey} onChange={e => setDbKey(e.target.value)} />
+              </div>
               <button onClick={handleCloudSave} className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl transition-all shadow-lg active:scale-95">Establish Secure Link</button>
            </div>
         </div>
@@ -225,12 +252,31 @@ const AdminPanel: React.FC = () => {
       {activeTab === 'data' && (
           <div className="max-w-xl bg-[#171717] p-10 rounded-2xl border border-[#262626] animate-in fade-in shadow-2xl">
               <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">System Data Protocol</h3>
-              <p className="text-neutral-500 text-sm mb-8">Backup, restore, and snapshot management.</p>
+              <p className="text-neutral-500 text-sm mb-8">Backup and restore system configurations.</p>
               <div className="space-y-4">
-                  <button onClick={() => { const d = exportData(); const b = new Blob([d], {type:'application/json'}); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href=u; l.download='jailbreak_lab_snapshot.json'; l.click(); }} className="w-full h-14 bg-[#262626] hover:bg-[#333] text-white font-bold uppercase tracking-widest text-xs rounded-2xl transition-all border border-[#404040]">Download Snapshot (.json)</button>
+                  <button onClick={() => { 
+                    const d = exportData(); 
+                    const b = new Blob([d], {type:'application/json'}); 
+                    const u = URL.createObjectURL(b); 
+                    const l = document.createElement('a'); 
+                    l.href=u; 
+                    l.download='pentest_system_backup.json'; 
+                    l.click(); 
+                  }} className="w-full h-14 bg-[#262626] hover:bg-[#333] text-white font-bold uppercase tracking-widest text-xs rounded-2xl transition-all border border-[#404040]">Download Backup (.json)</button>
+                  
                   <label className="block w-full h-14 flex items-center justify-center bg-brand-600/10 hover:bg-brand-600/20 border border-brand-600/30 rounded-2xl text-center cursor-pointer text-xs font-bold uppercase text-brand-400 transition-all">
-                      Restore from Local Snapshot
-                      <input type="file" onChange={async (e) => { const f = e.target.files?.[0]; if(!f) return; const r = new FileReader(); r.onload = async (ev) => { const s = await importData(ev.target?.result as string); if(s) { alert("Core Logic Restored Successfully."); window.location.reload(); } }; r.readAsText(f); }} className="hidden" />
+                      Restore from Backup
+                      <input type="file" onChange={async (e) => { 
+                        const f = e.target.files?.[0]; 
+                        if(!f) return; 
+                        const r = new FileReader(); 
+                        r.onload = async (ev) => { 
+                          const s = await importData(ev.target?.result as string); 
+                          if(s) { alert("Data Restored. Refreshing..."); window.location.reload(); } 
+                          else { alert("Restore Failed: Invalid file format."); }
+                        }; 
+                        r.readAsText(f); 
+                      }} className="hidden" />
                   </label>
               </div>
           </div>

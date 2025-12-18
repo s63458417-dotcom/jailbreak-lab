@@ -17,7 +17,7 @@ export const createChatSession = async (
   customApiKey?: string
 ): Promise<AISession> => {
   return {
-    modelName,
+    modelName: modelName || '',
     baseUrl: baseUrl || '',
     apiKey: customApiKey || '',
     systemInstruction,
@@ -30,32 +30,46 @@ export const sendMessageToAI = async (
   message: string
 ): Promise<string> => {
   if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Set Base URL in Admin.");
-  if (!session.apiKey) throw new Error("MISSING_AUTH: Set API Key in Admin.");
-
+  
+  // Standardize endpoint
   let endpoint = session.baseUrl;
-  if (!endpoint.endsWith('/chat/completions')) {
+  if (!endpoint.endsWith('/chat/completions') && !endpoint.includes('?')) {
       endpoint = endpoint.replace(/\/$/, '') + '/chat/completions';
   }
   
   try {
+    const messages = [
+      { role: "system", content: session.systemInstruction },
+      ...session.history.map(m => ({ 
+        role: m.role === 'model' ? 'assistant' : 'user', 
+        content: m.text 
+      })),
+      { role: "user", content: message }
+    ];
+
+    const body: any = {
+      messages,
+      stream: false
+    };
+
+    // Only include model if specified (some proxies/uplinks don't require/want it)
+    if (session.modelName && session.modelName.trim().length > 0) {
+      body.model = session.modelName;
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Only include Auth header if key is provided
+    if (session.apiKey && session.apiKey.trim().length > 0) {
+      headers['Authorization'] = `Bearer ${session.apiKey}`;
+    }
+
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.apiKey}`
-      },
-      body: JSON.stringify({
-        model: session.modelName,
-        messages: [
-          { role: "system", content: session.systemInstruction },
-          ...session.history.map(m => ({ 
-            role: m.role === 'model' ? 'assistant' : 'user', 
-            content: m.text 
-          })),
-          { role: "user", content: message }
-        ],
-        stream: false
-      })
+      headers,
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -64,7 +78,8 @@ export const sendMessageToAI = async (
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "No response received.";
+    // Support various response formats (OpenAI standard vs others)
+    return data.choices?.[0]?.message?.content || data.content || data.response || "No response received.";
   } catch (err: any) {
     throw new Error(`CONNECTION_ERROR: ${err.message}`);
   }

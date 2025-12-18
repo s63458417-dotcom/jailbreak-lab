@@ -61,7 +61,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(true);
   const [chatSession, setChatSession] = useState<AISession | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,7 +74,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
     if (!user || !persona) return;
     const history = getChatHistory(user.id, personaId);
     setMessages(history);
-    setIsConnecting(true);
 
     const initAI = async () => {
       try {
@@ -83,9 +81,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
         if (persona.keyPoolId) key = getValidKey(persona.keyPoolId) || key;
         const session = await createChatSession(persona.model, persona.systemPrompt, history, persona.baseUrl, key);
         setChatSession(session);
-        setIsConnecting(false);
       } catch (e: any) {
-        setIsConnecting(false);
         setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: `System Failure: ${e.message}`, timestamp: Date.now() }]);
       }
     };
@@ -123,7 +119,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
              </div>
              <span className="font-bold text-sm text-white">{persona.name}</span>
           </div>
-          <button onClick={() => { if(confirm("Reset chat history?")) { clearChatHistory(user!.id, persona.id); setMessages([]); } }} className="p-2 text-neutral-500 hover:text-white transition-colors">
+          <button onClick={() => { if(confirm("Terminate current session history?")) { clearChatHistory(user!.id, persona.id); setMessages([]); } }} className="p-2 text-neutral-500 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
@@ -136,10 +132,10 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                   {persona.avatarUrl ? <img src={persona.avatarUrl} className="w-full h-full object-cover rounded-[2.5rem]" /> : <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>}
                 </div>
                 <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{persona.name}</h2>
-                <p className="text-neutral-500 text-lg font-medium max-w-md">{persona.description || "How can I help you today?"}</p>
+                <p className="text-neutral-500 text-lg font-medium max-w-md">{persona.description || "System uplink ready for instructions."}</p>
                 <div className="mt-8 flex gap-3">
-                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-xs text-neutral-400 font-mono">MODEL: {persona.model}</div>
-                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-xs text-neutral-400 font-mono uppercase tracking-widest">Secured Uplink</div>
+                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest">UPLINK_SECURED</div>
+                   {persona.model && <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest">{persona.model.toUpperCase()}</div>}
                 </div>
             </div>
           ) : (
@@ -157,7 +153,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                   </div>
                 </div>
               ))}
-              {isSending && <div className="animate-pulse flex items-center gap-2 text-xs text-neutral-500 font-bold uppercase tracking-widest">Generating Intelligence...</div>}
+              {isSending && <div className="animate-pulse flex items-center gap-2 text-xs text-neutral-500 font-bold uppercase tracking-widest">Generating Packets...</div>}
             </div>
           )}
         </div>
@@ -165,7 +161,6 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
         {/* Floating Footer Input */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d] to-transparent pointer-events-none">
           <div className="max-w-3xl mx-auto pointer-events-auto">
-            {/* Input Bar */}
             <div className="relative bg-[#171717] border border-[#262626] rounded-3xl p-1.5 shadow-2xl focus-within:border-brand-600 transition-all group">
               <textarea 
                 ref={inputRef} rows={1} value={inputValue} disabled={isSending}
