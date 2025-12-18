@@ -1,7 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Absolute Source of Truth
 const CLOUD_URL = 'https://ofislzhftkamnippyjnd.supabase.co';
 const CLOUD_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9maXNsemhmdGthbW5pcHB5am5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzODY5NDMsImV4cCI6MjA4MDk2Mjk0M30.4WWAAeSgoubP1heaRKsnM6e6dP19SYkF8vIaE8ZWLyw';
 

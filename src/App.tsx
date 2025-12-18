@@ -20,9 +20,9 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary class to catch rendering errors.
- * Fixed: Explicitly use Component from 'react' and declare the state property to resolve "Property 'props' does not exist" and "Property 'state' does not exist" errors
+ * Fixed: Explicitly use React.Component to resolve "Property 'props' does not exist" and "Property 'state' does not exist" errors
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Explicitly defining state property for robust TypeScript type inference.
   public state: ErrorBoundaryState = {
     hasError: false,
@@ -61,7 +61,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Explicitly returning children from props with correct generic typing.
+    // Fix: Returning children from props with correct generic typing via React.Component.
     return this.props.children;
   }
 }

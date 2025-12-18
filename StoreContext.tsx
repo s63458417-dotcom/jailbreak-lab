@@ -39,7 +39,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsReady(true);
       return;
     }
-
     try {
       const [p, c, k, ch] = await Promise.all([
         supabase.from('personas').select('*'),
@@ -47,17 +46,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('key_pools').select('*'),
         supabase.from('chats').select('*')
       ]);
-      
-      if (p.data) {
+      if (p.data && p.data.length > 0) {
         setPersonas(p.data.map((x: any) => ({ 
-          id: x.id, name: x.name, description: x.description,
-          systemPrompt: x.system_prompt, isLocked: x.is_locked, 
-          accessKey: x.access_key, accessDuration: x.access_duration,
+          id: x.id, name: x.name, description: x.description, systemPrompt: x.system_prompt, 
+          isLocked: x.is_locked, accessKey: x.access_key, accessDuration: x.access_duration,
           model: x.model, baseUrl: x.base_url, customApiKey: x.custom_api_key,
-          keyPoolId: x.key_pool_id, avatar: x.avatar, avatarUrl: x.avatar_url, 
-          themeColor: x.theme_color, rateLimit: x.rate_limit
+          keyPoolId: x.key_pool_id, avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
         })));
-      }
+      } else { setPersonas(INITIAL_PERSONAS); }
       if (c.data) setConfig({ appName: c.data.app_name, creatorName: c.data.creator_name, logoUrl: c.data.logo_url });
       if (k.data) setKeyPools(k.data.map((x: any) => ({ id: x.id, name: x.name, provider: x.provider, keys: x.keys || [], deadKeys: x.dead_keys || {} })));
       if (ch.data) {

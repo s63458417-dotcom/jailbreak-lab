@@ -29,8 +29,8 @@ export const sendMessageToAI = async (
   session: AISession,
   message: string
 ): Promise<string> => {
-  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Define a Base URL in Admin.");
-  if (!session.apiKey) throw new Error("MISSING_AUTH: Provide an API Key in Admin.");
+  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Set Base URL in Admin.");
+  if (!session.apiKey) throw new Error("MISSING_AUTH: Set API Key in Admin.");
 
   let endpoint = session.baseUrl;
   if (!endpoint.endsWith('/chat/completions')) {
