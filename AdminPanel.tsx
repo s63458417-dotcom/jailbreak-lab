@@ -12,11 +12,12 @@ const AdminPanel: React.FC = () => {
   const { 
     personas, addPersona, updatePersona, deletePersona, 
     config, updateConfig, allChats, 
-    keyPools, addKeyPool, updateKeyPool, deleteKeyPool 
+    keyPools, addKeyPool, updateKeyPool, deleteKeyPool,
+    exportData, importData 
   } = useStore();
   const { getAllUsers } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding' | 'cloud'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding' | 'cloud' | 'data'>('ai');
 
   // Cloud Config
   const [dbUrl, setDbUrl] = useState(localStorage.getItem('supabase_url') || '');
@@ -73,7 +74,7 @@ const AdminPanel: React.FC = () => {
   return (
     <Layout title="Control Center">
       <div className="mb-8 flex overflow-x-auto bg-[#1a1a1a] p-1.5 rounded-2xl border border-neutral-800 gap-1 no-scrollbar text-white">
-        {['ai', 'vault', 'users', 'branding', 'cloud'].map(tab => (
+        {['ai', 'vault', 'users', 'branding', 'cloud', 'data'].map(tab => (
           <button key={tab} onClick={() => { setActiveTab(tab as any); setInspectUserId(null); }} className={`px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all whitespace-nowrap ${activeTab === tab ? 'bg-brand-600 text-white shadow-lg' : 'text-neutral-500 hover:text-white hover:bg-white/5'}`}>
             {tab === 'ai' ? 'Intelligence' : tab === 'cloud' ? 'Cloud Link' : tab}
           </button>
@@ -219,6 +220,20 @@ const AdminPanel: React.FC = () => {
               <button onClick={handleCloudSave} className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl transition-all shadow-lg active:scale-95">Establish Secure Link</button>
            </div>
         </div>
+      )}
+
+      {activeTab === 'data' && (
+          <div className="max-w-xl bg-[#171717] p-10 rounded-2xl border border-[#262626] animate-in fade-in shadow-2xl">
+              <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">System Data Protocol</h3>
+              <p className="text-neutral-500 text-sm mb-8">Backup, restore, and snapshot management.</p>
+              <div className="space-y-4">
+                  <button onClick={() => { const d = exportData(); const b = new Blob([d], {type:'application/json'}); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href=u; l.download='jailbreak_lab_snapshot.json'; l.click(); }} className="w-full h-14 bg-[#262626] hover:bg-[#333] text-white font-bold uppercase tracking-widest text-xs rounded-2xl transition-all border border-[#404040]">Download Snapshot (.json)</button>
+                  <label className="block w-full h-14 flex items-center justify-center bg-brand-600/10 hover:bg-brand-600/20 border border-brand-600/30 rounded-2xl text-center cursor-pointer text-xs font-bold uppercase text-brand-400 transition-all">
+                      Restore from Local Snapshot
+                      <input type="file" onChange={async (e) => { const f = e.target.files?.[0]; if(!f) return; const r = new FileReader(); r.onload = async (ev) => { const s = await importData(ev.target?.result as string); if(s) { alert("Core Logic Restored Successfully."); window.location.reload(); } }; r.readAsText(f); }} className="hidden" />
+                  </label>
+              </div>
+          </div>
       )}
     </Layout>
   );

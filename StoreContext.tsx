@@ -21,6 +21,8 @@ interface StoreContextType {
   deleteKeyPool: (id: string) => Promise<void>;
   getValidKey: (poolId: string) => string | null;
   reportKeyFailure: (poolId: string, key: string) => Promise<void>;
+  exportData: () => string;
+  importData: (json: string) => Promise<boolean>;
   isReady: boolean;
 }
 
@@ -54,7 +56,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           keyPoolId: x.key_pool_id, avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
         })));
       } else { setPersonas(INITIAL_PERSONAS); }
-      if (c.data) setConfig({ appName: c.data.app_name, creatorName: c.data.creator_name, logoUrl: c.data.logo_url });
+      if (c.data) setConfig({ appName: c.data.app_name, creatorName: c.data.creator_name, logo_url: c.data.logo_url });
       if (k.data) setKeyPools(k.data.map((x: any) => ({ id: x.id, name: x.name, provider: x.provider, keys: x.keys || [], deadKeys: x.dead_keys || {} })));
       if (ch.data) {
         const map: any = {};
@@ -136,12 +138,56 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setKeyPools(prev => prev.map(p => p.id === poolId ? { ...p, deadKeys: { ...p.deadKeys, [key]: Date.now() } } : p));
   };
 
+  const exportData = () => {
+    return JSON.stringify({ personas, config, keyPools }, null, 2);
+  };
+
+  const importData = async (json: string) => {
+    try {
+      const data = JSON.parse(json);
+      if (data.personas) setPersonas(data.personas);
+      if (data.config) setConfig(data.config);
+      if (data.keyPools) setKeyPools(data.keyPools);
+      
+      if (isSupabaseConfigured()) {
+        const tasks = [];
+        if (data.personas) {
+          for (const p of data.personas) {
+            tasks.push(supabase.from('personas').upsert({ 
+              id: p.id, name: p.name, description: p.description, system_prompt: p.systemPrompt, 
+              is_locked: p.isLocked, access_key: p.accessKey, access_duration: p.accessDuration,
+              model: p.model, base_url: p.baseUrl, custom_api_key: p.customApiKey, key_pool_id: p.keyPoolId,
+              avatar: p.avatar, avatar_url: p.avatarUrl, theme_color: p.themeColor, rate_limit: p.rateLimit
+            }));
+          }
+        }
+        if (data.config) {
+          tasks.push(supabase.from('system_config').upsert({ 
+            id: 'global', app_name: data.config.appName, creator_name: data.config.creatorName, logo_url: data.config.logoUrl 
+          }));
+        }
+        if (data.keyPools) {
+          for (const k of data.keyPools) {
+            tasks.push(supabase.from('key_pools').upsert({ 
+              id: k.id, name: k.name, provider: k.provider, keys: k.keys, dead_keys: k.deadKeys 
+            }));
+          }
+        }
+        await Promise.all(tasks);
+      }
+      return true;
+    } catch (e) {
+      console.error("Import error", e);
+      return false;
+    }
+  };
+
   return (
     <StoreContext.Provider value={{ 
       personas, addPersona, updatePersona, deletePersona, getChatHistory: (u, p) => chats[`${u}_${p}`]?.messages || [],
       saveChatMessage, clearChatHistory, config, 
       updateConfig: async (c) => { setConfig(c); if (isSupabaseConfigured()) await supabase.from('system_config').upsert({ id: 'global', app_name: c.appName, creator_name: c.creatorName, logo_url: c.logoUrl }); },
-      allChats: chats, keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, isReady
+      allChats: chats, keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, exportData, importData, isReady
     }}>
       {children}
     </StoreContext.Provider>
