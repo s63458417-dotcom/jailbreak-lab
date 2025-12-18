@@ -31,39 +31,63 @@ export const sendMessageToAI = async (
 ): Promise<string> => {
   if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Set Base URL in Admin.");
   
-  // Standardize endpoint
-  let endpoint = session.baseUrl;
-  if (!endpoint.endsWith('/chat/completions') && !endpoint.includes('?')) {
-      endpoint = endpoint.replace(/\/$/, '') + '/chat/completions';
-  }
+  const endpoint = session.baseUrl;
+  const isGoogleNative = endpoint.includes('generativelanguage.googleapis.com');
   
   try {
-    const messages = [
-      { role: "system", content: session.systemInstruction },
-      ...session.history.map(m => ({ 
-        role: m.role === 'model' ? 'assistant' : 'user', 
-        content: m.text 
-      })),
-      { role: "user", content: message }
-    ];
+    let body: any;
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-    const body: any = {
-      messages,
-      stream: false
-    };
+    if (isGoogleNative) {
+      // --- NATIVE GEMINI PROTOCOL ---
+      headers['x-goog-api-key'] = session.apiKey;
+      body = {
+        contents: [
+          ...session.history.map(m => ({
+            role: m.role === 'model' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+          })),
+          { role: 'user', parts: [{ text: message }] }
+        ],
+        systemInstruction: {
+          parts: [{ text: session.systemInstruction }]
+        },
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        }
+      };
+    } else {
+      // --- OPENAI / GENERIC PROTOCOL (Gopher, Gock, HuggingFace, etc.) ---
+      if (session.apiKey) {
+        headers['Authorization'] = `Bearer ${session.apiKey}`;
+      }
 
-    // Only include model if specified (some proxies/uplinks don't require/want it)
-    if (session.modelName && session.modelName.trim().length > 0) {
-      body.model = session.modelName;
-    }
+      const messages = [
+        { role: "system", content: session.systemInstruction },
+        ...session.history.map(m => ({ 
+          role: m.role === 'model' ? 'assistant' : 'user', 
+          content: m.text 
+        })),
+        { role: "user", content: message }
+      ];
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+      body = {
+        messages,
+        stream: false,
+        temperature: 0.7
+      };
 
-    // Only include Auth header if key is provided
-    if (session.apiKey && session.apiKey.trim().length > 0) {
-      headers['Authorization'] = `Bearer ${session.apiKey}`;
+      // Only include model if specifically provided by the admin
+      if (session.modelName && session.modelName.trim().length > 0) {
+        body.model = session.modelName;
+      }
+
+      // Automatically append /chat/completions if it's a base URL and not a direct file/param link
+      let finalEndpoint = endpoint;
+      if (!finalEndpoint.endsWith('/chat/completions') && !finalEndpoint.includes('?') && !finalEndpoint.includes(':')) {
+        finalEndpoint = finalEndpoint.replace(/\/$/, '') + '/chat/completions';
+      }
     }
 
     const response = await fetch(endpoint, {
@@ -74,12 +98,17 @@ export const sendMessageToAI = async (
 
     if (!response.ok) {
         const errData = await response.text();
-        throw new Error(`Provider Error ${response.status}: ${errData.substring(0, 100)}`);
+        throw new Error(`Provider Error ${response.status}: ${errData.substring(0, 150)}`);
     }
 
     const data = await response.json();
-    // Support various response formats (OpenAI standard vs others)
-    return data.choices?.[0]?.message?.content || data.content || data.response || "No response received.";
+
+    // Support extraction from multiple formats
+    if (isGoogleNative) {
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini.";
+    } else {
+      return data.choices?.[0]?.message?.content || data.content || data.response || "No response received.";
+    }
   } catch (err: any) {
     throw new Error(`CONNECTION_ERROR: ${err.message}`);
   }

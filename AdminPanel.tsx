@@ -17,17 +17,15 @@ const AdminPanel: React.FC = () => {
   
   const [activeTab, setActiveTab] = useState<'ai' | 'vault' | 'users' | 'branding' | 'cloud' | 'data'>('ai');
 
-  // Cloud Config
   const [dbUrl, setDbUrl] = useState(localStorage.getItem('supabase_url') || '');
   const [dbKey, setDbKey] = useState(localStorage.getItem('supabase_key') || '');
   const handleCloudSave = () => {
     if (!dbUrl || !dbKey) return alert("Credentials required");
     initSupabase(dbUrl, dbKey);
-    alert("Cloud Link Established. Refreshing system...");
+    alert("Cloud Link Established. System Rebooting...");
     window.location.reload();
   };
 
-  // AI Persona Form
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Persona>>({ name: '', description: '', systemPrompt: '', model: '', baseUrl: '', customApiKey: '', avatar: 'shield' });
   
@@ -39,7 +37,6 @@ const AdminPanel: React.FC = () => {
     setFormData({ name: '', description: '', systemPrompt: '', model: '', baseUrl: '', customApiKey: '', avatar: 'shield' });
   };
 
-  // Vault Form
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null);
   const [poolForm, setPoolForm] = useState<Partial<KeyPool>>({ name: '', provider: 'standard', keys: [] });
   const [poolKeysText, setPoolKeysText] = useState('');
@@ -55,7 +52,6 @@ const AdminPanel: React.FC = () => {
     setPoolKeysText('');
   };
 
-  // User Roster & Analysis
   const users = getAllUsers();
   const [inspectUserId, setInspectUserId] = useState<string | null>(null);
   const analyzedLogs = useMemo(() => {
@@ -85,18 +81,18 @@ const AdminPanel: React.FC = () => {
         <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in">
           <div className="xl:w-1/3">
             <div className="bg-[#171717] rounded-2xl border border-[#262626] overflow-hidden">
-               <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Operational Uplinks</div>
+               <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Active Intelligence</div>
                <div className="divide-y divide-[#262626]">
                   {personas.map(p => (
                     <div key={p.id} className="p-4 flex flex-col gap-3 hover:bg-white/5">
                         <div className="flex justify-between items-start">
                             <div>
                                 <div className="text-sm font-bold text-white">{p.name}</div>
-                                <div className="text-[10px] text-neutral-500 font-mono uppercase truncate w-32">{p.model || 'No Model Set'}</div>
+                                <div className="text-[10px] text-neutral-500 font-mono uppercase truncate w-32">{p.model || 'Static Payload'}</div>
                             </div>
-                            <button onClick={() => deletePersona(p.id)} className="text-red-500 hover:text-red-400 text-xs uppercase font-bold">Del</button>
+                            <button onClick={() => deletePersona(p.id)} className="text-red-500 hover:text-red-400 text-xs uppercase font-bold">Terminate</button>
                         </div>
-                        <button onClick={() => { setEditingId(p.id); setFormData(p); }} className="w-full bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-1.5 rounded-lg border border-white/5 uppercase">Configure</button>
+                        <button onClick={() => { setEditingId(p.id); setFormData(p); }} className="w-full bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-1.5 rounded-lg border border-white/5 uppercase">Edit Parameters</button>
                     </div>
                   ))}
                </div>
@@ -110,12 +106,12 @@ const AdminPanel: React.FC = () => {
                     <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
                   </div>
                   <div>
-                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Model Name (Optional)</label>
-                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="e.g. gpt-4o" />
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Model (Leave blank if URL has it)</label>
+                    <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} placeholder="e.g. gemini-2.5-flash-lite" />
                   </div>
                </div>
                <div>
-                  <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Base URL / Endpoint</label>
+                  <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Endpoint URL (Full Link Supported)</label>
                   <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.baseUrl || ''} onChange={e => setFormData({...formData, baseUrl: e.target.value})} placeholder="https://..." required />
                </div>
                <div>
@@ -131,12 +127,12 @@ const AdminPanel: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Direct API Key (Optional)</label>
+                    <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Direct API Key</label>
                     <input type="password" className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={formData.customApiKey || ''} onChange={e => setFormData({...formData, customApiKey: e.target.value})} />
                   </div>
                </div>
                <button type="submit" className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl shadow-lg transition-all active:scale-95">
-                  {editingId ? 'Update Uplink' : 'Initialize Uplink'}
+                  {editingId ? 'Save Configuration' : 'Deploy Uplink'}
                </button>
             </form>
           </div>
@@ -146,7 +142,7 @@ const AdminPanel: React.FC = () => {
       {activeTab === 'vault' && (
         <div className="flex flex-col xl:flex-row gap-8 animate-in fade-in">
            <div className="xl:w-1/3 bg-[#171717] rounded-2xl border border-[#262626] overflow-hidden h-fit">
-              <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Active Vaults</div>
+              <div className="p-4 border-b border-[#262626] font-bold text-neutral-400 text-[10px] tracking-widest uppercase bg-black/20">Secure Vaults</div>
               <div className="divide-y divide-[#262626]">
                  {keyPools.map(p => (
                    <div key={p.id} className="p-4 hover:bg-white/5 cursor-pointer" onClick={() => { setEditingPoolId(p.id); setPoolForm(p); setPoolKeysText(p.keys.join('\n')); }}>
@@ -188,7 +184,7 @@ const AdminPanel: React.FC = () => {
                       <td className="px-6 py-4 font-bold text-white">{u.username}</td>
                       <td className="px-6 py-4 font-mono text-xs">{u.role}</td>
                       <td className="px-6 py-4 text-right">
-                         <button onClick={() => setInspectUserId(u.id)} className="text-brand-500 hover:text-brand-400 font-bold text-[10px] uppercase tracking-widest">Intercept Logs</button>
+                         <button onClick={() => setInspectUserId(u.id)} className="text-brand-500 hover:text-brand-400 font-bold text-[10px] uppercase tracking-widest">View Transmission Logs</button>
                       </td>
                    </tr>
                  ))}
@@ -234,25 +230,25 @@ const AdminPanel: React.FC = () => {
 
       {activeTab === 'cloud' && (
         <div className="max-w-xl bg-[#171717] p-10 rounded-2xl border border-[#262626] animate-in fade-in shadow-2xl">
-           <h3 className="text-2xl font-bold text-white mb-8 tracking-tight">Cloud Database Link</h3>
+           <h3 className="text-2xl font-bold text-white mb-8 tracking-tight">Cloud Link Infrastructure</h3>
            <div className="space-y-6">
               <div>
-                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Supabase URL</label>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Supabase Project URL</label>
                 <input className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={dbUrl} onChange={e => setDbUrl(e.target.value)} />
               </div>
               <div>
-                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Supabase Key</label>
+                <label className="block text-neutral-400 text-[10px] font-bold uppercase mb-2">Service Key</label>
                 <input type="password" className="w-full bg-[#0d0d0d] border border-[#262626] text-white p-3 rounded-xl text-sm outline-none" value={dbKey} onChange={e => setDbKey(e.target.value)} />
               </div>
-              <button onClick={handleCloudSave} className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl transition-all shadow-lg active:scale-95">Establish Secure Link</button>
+              <button onClick={handleCloudSave} className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-widest text-sm rounded-2xl transition-all shadow-lg active:scale-95">Synchronize Now</button>
            </div>
         </div>
       )}
 
       {activeTab === 'data' && (
           <div className="max-w-xl bg-[#171717] p-10 rounded-2xl border border-[#262626] animate-in fade-in shadow-2xl">
-              <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">System Data Protocol</h3>
-              <p className="text-neutral-500 text-sm mb-8">Backup and restore system configurations.</p>
+              <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">Data Snapshot Protocol</h3>
+              <p className="text-neutral-500 text-sm mb-8">Backup and Restore your entire system configuration.</p>
               <div className="space-y-4">
                   <button onClick={() => { 
                     const d = exportData(); 
@@ -260,20 +256,20 @@ const AdminPanel: React.FC = () => {
                     const u = URL.createObjectURL(b); 
                     const l = document.createElement('a'); 
                     l.href=u; 
-                    l.download='pentest_system_backup.json'; 
+                    l.download='pentest_system_snapshot.json'; 
                     l.click(); 
-                  }} className="w-full h-14 bg-[#262626] hover:bg-[#333] text-white font-bold uppercase tracking-widest text-xs rounded-2xl transition-all border border-[#404040]">Download Backup (.json)</button>
+                  }} className="w-full h-14 bg-[#262626] hover:bg-[#333] text-white font-bold uppercase tracking-widest text-xs rounded-2xl transition-all border border-[#404040]">Download Snapshot (.json)</button>
                   
                   <label className="block w-full h-14 flex items-center justify-center bg-brand-600/10 hover:bg-brand-600/20 border border-brand-600/30 rounded-2xl text-center cursor-pointer text-xs font-bold uppercase text-brand-400 transition-all">
-                      Restore from Backup
+                      Restore from Snapshot
                       <input type="file" onChange={async (e) => { 
                         const f = e.target.files?.[0]; 
                         if(!f) return; 
                         const r = new FileReader(); 
                         r.onload = async (ev) => { 
                           const s = await importData(ev.target?.result as string); 
-                          if(s) { alert("Data Restored. Refreshing..."); window.location.reload(); } 
-                          else { alert("Restore Failed: Invalid file format."); }
+                          if(s) { alert("Core Data Restored. Re-initializing..."); window.location.reload(); } 
+                          else { alert("Protocol Failure: Invalid snapshot file."); }
                         }; 
                         r.readAsText(f); 
                       }} className="hidden" />

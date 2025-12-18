@@ -56,7 +56,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           keyPoolId: x.key_pool_id, avatar: x.avatar, avatarUrl: x.avatar_url, themeColor: x.theme_color, rateLimit: x.rate_limit
         })));
       } else { setPersonas(INITIAL_PERSONAS); }
-      if (c.data) setConfig({ appName: c.data.app_name, creatorName: c.data.creator_name, logo_url: c.data.logo_url });
+      if (c.data) setConfig({ appName: c.data.app_name, creatorName: c.data.creator_name, logoUrl: c.data.logo_url });
       if (k.data) setKeyPools(k.data.map((x: any) => ({ id: x.id, name: x.name, provider: x.provider, keys: x.keys || [], deadKeys: x.dead_keys || {} })));
       if (ch.data) {
         const map: any = {};
@@ -169,7 +169,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (data.keyPools) {
           for (const k of data.keyPools) {
             tasks.push(supabase.from('key_pools').upsert({ 
-              id: k.id, name: k.name, provider: k.provider, keys: k.keys, dead_keys: k.deadKeys 
+              id: k.id, name: k.name, provider: k.provider, keys: k.keys, dead_keys: k.dead_keys 
             }));
           }
         }

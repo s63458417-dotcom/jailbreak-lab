@@ -1,5 +1,5 @@
 
-import React, { ErrorInfo, ReactNode, useState, useEffect } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { StoreProvider } from './StoreContext';
 import Login from './Login';
@@ -12,19 +12,26 @@ import UserProfile from './UserProfile';
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
 
-// Fix: Using React.Component explicitly to resolve TypeScript property access issues for state and props.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+/**
+ * ErrorBoundary class to catch rendering errors.
+ * Fix: Explicitly use Component and declare state to resolve "Property 'state' does not exist" and "Property 'props' does not exist" errors.
+ */
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly defining state property for robust TypeScript type inference.
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fix: state initialization within a class that correctly extends React.Component with generics
-    this.state = { hasError: false, error: null };
   }
   
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Crash:", error, errorInfo); }
   
   render() {
-    // Fix: property 'state' is now recognized due to explicit generic inheritance from React.Component
+    // Fix: state property is now recognized due to explicit generic inheritance
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -34,7 +41,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fix: property 'props' is now recognized due to explicit generic inheritance from React.Component
+    // Fix: property 'props' is now recognized due to explicit generic inheritance
     return this.props.children;
   }
 }

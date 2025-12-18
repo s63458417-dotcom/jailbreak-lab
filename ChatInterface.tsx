@@ -111,7 +111,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
   return (
     <Layout title={persona.name} isChatMode={true}>
       <div className="flex flex-col h-full bg-[#0d0d0d] relative overflow-hidden">
-        {/* Header */}
+        {/* Header Bar */}
         <div className="h-14 flex items-center justify-between px-6 border-b border-[#1a1a1a] bg-[#0d0d0d] z-20">
           <div className="flex items-center gap-3">
              <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-xs">
@@ -119,12 +119,12 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
              </div>
              <span className="font-bold text-sm text-white">{persona.name}</span>
           </div>
-          <button onClick={() => { if(confirm("Terminate current session history?")) { clearChatHistory(user!.id, persona.id); setMessages([]); } }} className="p-2 text-neutral-500 hover:text-white transition-colors">
+          <button onClick={() => { if(confirm("Terminate session history?")) { clearChatHistory(user!.id, persona.id); setMessages([]); } }} className="p-2 text-neutral-500 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
 
-        {/* Message View */}
+        {/* Conversation Stream */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pt-6 pb-40" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center animate-fade-in text-center">
@@ -132,10 +132,10 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
                   {persona.avatarUrl ? <img src={persona.avatarUrl} className="w-full h-full object-cover rounded-[2.5rem]" /> : <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>}
                 </div>
                 <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{persona.name}</h2>
-                <p className="text-neutral-500 text-lg font-medium max-w-md">{persona.description || "System uplink ready for instructions."}</p>
+                <p className="text-neutral-500 text-lg font-medium max-w-md">{persona.description || "Active uplink ready for instructions."}</p>
                 <div className="mt-8 flex gap-3">
-                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest">UPLINK_SECURED</div>
-                   {persona.model && <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest">{persona.model.toUpperCase()}</div>}
+                   <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest uppercase">Uplink Secured</div>
+                   {persona.model && <div className="px-4 py-2 bg-[#171717] border border-[#262626] rounded-full text-[10px] font-bold text-neutral-400 font-mono tracking-widest uppercase">{persona.model}</div>}
                 </div>
             </div>
           ) : (
@@ -158,7 +158,7 @@ const ChatInterface: React.FC<{ personaId: string }> = ({ personaId }) => {
           )}
         </div>
 
-        {/* Floating Footer Input */}
+        {/* Input Control Area */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d] to-transparent pointer-events-none">
           <div className="max-w-3xl mx-auto pointer-events-auto">
             <div className="relative bg-[#171717] border border-[#262626] rounded-3xl p-1.5 shadow-2xl focus-within:border-brand-600 transition-all group">

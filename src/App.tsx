@@ -1,5 +1,5 @@
 
-import React, { ErrorInfo, ReactNode, useState, useEffect } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider } from './context/StoreContext';
 import Login from './pages/Login';
@@ -20,9 +20,9 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary class to catch rendering errors.
- * Fix: Explicitly use React.Component to resolve "Property 'props' does not exist" and "Property 'state' does not exist" errors in render().
+ * Fix: Explicitly use Component from React to resolve "Property 'props' does not exist" and "Property 'state' does not exist" errors in render().
  */
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Explicitly defining state property for robust TypeScript type inference.
   public state: ErrorBoundaryState = {
     hasError: false,
@@ -42,7 +42,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Fix: access state via this.state correctly typed by generic React.Component
+    // Fix: state property is recognized due to explicit generic inheritance from Component
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -61,7 +61,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // Fix: property 'props' is now recognized due to explicit generic inheritance from React.Component
+    // Fix: property 'props' is now recognized due to explicit generic inheritance from Component
     return this.props.children;
   }
 }
