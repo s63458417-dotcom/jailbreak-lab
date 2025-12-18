@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Role } from '../types';
-import { ADMIN_USERNAME, DEFAULT_ADMIN_PASS } from '../constants';
-import { supabase, isSupabaseConfigured } from '../supabaseService';
+import { User, Role } from './types';
+import { ADMIN_USERNAME, DEFAULT_ADMIN_PASS } from './constants';
+import { supabase, isSupabaseConfigured } from './supabaseService';
 
 interface AuthContextType {
   user: User | null;

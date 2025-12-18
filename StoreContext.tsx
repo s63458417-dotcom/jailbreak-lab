@@ -14,6 +14,7 @@ interface StoreContextType {
   clearChatHistory: (userId: string, personaId: string) => Promise<void>;
   config: SystemConfig;
   updateConfig: (newConfig: SystemConfig) => Promise<void>;
+  allChats: Record<string, ChatSession>;
   keyPools: KeyPool[];
   addKeyPool: (pool: KeyPool) => Promise<void>;
   updateKeyPool: (pool: KeyPool) => Promise<void>;
@@ -144,7 +145,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       personas, addPersona, updatePersona, deletePersona, getChatHistory: (u, p) => chats[`${u}_${p}`]?.messages || [],
       saveChatMessage, clearChatHistory, config, 
       updateConfig: async (c) => { setConfig(c); if (isSupabaseConfigured()) await supabase.from('system_config').upsert({ id: 'global', app_name: c.appName, creator_name: c.creatorName, logo_url: c.logoUrl }); },
-      keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, isReady
+      allChats: chats, keyPools, addKeyPool, updateKeyPool, deleteKeyPool, getValidKey, reportKeyFailure, isReady
     }}>
       {children}
     </StoreContext.Provider>

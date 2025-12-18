@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import Layout from '../components/Layout';
-import { useStore } from '../context/StoreContext';
-import { useAuth } from '../context/AuthContext';
-import { Persona, SystemConfig, KeyPool, ChatSession } from '../types';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import { initSupabase } from '../supabaseService';
+import Layout from './Layout';
+import { useStore } from './StoreContext';
+import { useAuth } from './AuthContext';
+import { Persona, SystemConfig, KeyPool, ChatSession } from './types';
+import Button from './components/Button';
+import Input from './components/Input';
+import { initSupabase } from './supabaseService';
 
 const AdminPanel: React.FC = () => {
   const { 

@@ -20,14 +20,18 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary class to catch rendering errors.
- * Fixed: Explicitly use the imported Component class and class properties for state to ensure TypeScript correctly identifies properties.
+ * Fixed: Using Component directly from 'react' to resolve "Property 'props' does not exist" TypeScript error.
  */
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Use class property for state initialization to help TypeScript inference
+  // Explicitly defining state property for robust TypeScript type inference.
   public state: ErrorBoundaryState = {
     hasError: false,
     error: null,
   };
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -38,7 +42,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
-    // Access state via this.state
+    // Access state via this.state with correct generic typing
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-neutral-950 text-red-500 p-10 font-mono flex flex-col items-center justify-center">
@@ -57,7 +61,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Access children from props
+    // Explicitly returning children from props with correct generic typing.
     return this.props.children;
   }
 }
@@ -90,7 +94,6 @@ const AppContent: React.FC = () => {
   if (route.startsWith('#/chat/')) {
     const parts = route.split('/chat/');
     if (parts.length > 1) {
-        // Strip any extra params if they exist from old links
         const personaId = parts[1].split('/')[0];
         return <ChatInterface personaId={personaId} />;
     }

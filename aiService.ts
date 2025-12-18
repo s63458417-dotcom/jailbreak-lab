@@ -9,10 +9,6 @@ export interface AISession {
   history: ChatMessage[];
 }
 
-/**
- * Creates a generic session for OpenAI-compatible endpoints.
- * NO GOOGLE SDK USED.
- */
 export const createChatSession = async (
   modelName: string,
   systemInstruction: string,
@@ -29,15 +25,12 @@ export const createChatSession = async (
   };
 };
 
-/**
- * Sends a message using a standard REST API fetch call.
- */
 export const sendMessageToAI = async (
   session: AISession,
   message: string
 ): Promise<string> => {
-  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: No Base URL defined for this uplink.");
-  if (!session.apiKey) throw new Error("MISSING_AUTH: No API Key provided for this uplink.");
+  if (!session.baseUrl) throw new Error("MISSING_ENDPOINT: Define a Base URL in Admin.");
+  if (!session.apiKey) throw new Error("MISSING_AUTH: Provide an API Key in Admin.");
 
   let endpoint = session.baseUrl;
   if (!endpoint.endsWith('/chat/completions')) {
@@ -73,6 +66,6 @@ export const sendMessageToAI = async (
     const data = await response.json();
     return data.choices?.[0]?.message?.content || "No response received.";
   } catch (err: any) {
-    throw new Error(`UPLINK_FAILURE: ${err.message}`);
+    throw new Error(`CONNECTION_ERROR: ${err.message}`);
   }
 };
